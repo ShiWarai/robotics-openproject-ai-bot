@@ -7,7 +7,7 @@ class LMStudioClient:
         self.model = model
         self.headers = {"Content-Type": "application/json"}
 
-    def send_request(self, system_prompt: str, user_input: str, temperature: float = 0.1, max_tokens: int = 1000) -> str:
+    def send_request(self, system_prompt: str, user_input: str, temperature: float = 0.3, max_tokens: int = 200) -> str:
         """Отправка запроса к LM Studio API."""
         payload = {
             "model": self.model,

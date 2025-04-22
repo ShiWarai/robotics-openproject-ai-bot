@@ -10,7 +10,7 @@ from create_task import (
 )
 from estimated_time import (
     choose_input_method, handle_input_method_choice, get_project_choice_time, handle_project_choice_time,
-    handle_task_choice_time, handle_date_choice_time, handle_activity_type_time, handle_person_choice_time,
+    handle_task_choice_time, handle_date_choice_time, handle_person_choice_time,
     handle_hours_input_time, handle_add_another_time, handle_project_choice_text
 )
 from parse_text_input import handle_text_input
@@ -49,7 +49,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     if user_id:
         context.user_data['user_id'] = user_id
-        context.bot_data['USER_TELEGRAM_IDS'] = USER_TELEGRAM_IDS  # Сохраняем для доступа в других модулях
         return await show_main_menu(update, context)
     else:
         await update.message.reply_text(
@@ -121,11 +120,13 @@ def main():
             TaskStates.ESTIMATED_TIME.value: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_estimated_time)],
             TimeStates.INPUT_METHOD_CHOICE.value: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_input_method_choice)],
             TimeStates.PROJECT_CHOICE_TEXT.value: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_project_choice_text)],
-            TimeStates.TEXT_INPUT.value: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_input)],
+            TimeStates.TEXT_INPUT.value: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_input),
+                MessageHandler(filters.VOICE, handle_text_input)  # Добавляем обработку голосовых сообщений
+            ],
             TimeStates.PROJECT_CHOICE_TIME.value: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_project_choice_time)],
             TimeStates.TASK_CHOICE_TIME.value: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_task_choice_time)],
             TimeStates.DATE_CHOICE_TIME.value: [CallbackQueryHandler(handle_date_choice_time)],
-            TimeStates.ACTIVITY_TYPE_TIME.value: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_activity_type_time)],
             TimeStates.PERSON_CHOICE_TIME.value: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_person_choice_time)],
             TimeStates.HOURS_INPUT_TIME.value: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_hours_input_time)],
             TimeStates.ADD_ANOTHER_TIME.value: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_add_another_time)],
@@ -137,7 +138,7 @@ def main():
     )
 
     application.add_handler(conv_handler)
-    #application.add_error_handler(error_handler)
+    application.add_error_handler(error_handler)
     application.run_polling()
 
 if __name__ == '__main__':

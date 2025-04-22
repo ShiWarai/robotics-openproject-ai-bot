@@ -9,15 +9,15 @@ from states import TimeStates
 from utils import show_main_menu
 from estimated_time import get_project_tasks, get_project_members
 from lm_studio_client import call_lm_studio
+from speech_recognition import process_voice_message
 
 SYSTEM_PROMPT_TEMPLATE = """
-Вы — помощник, который анализирует текст на русском языке и извлекает информацию о рабочем времени для добавления в систему учета задач. Пользователь вводит текст, описывающий деятельность по задачам в проекте "{PROJECT_NAME}", например: "2 часа тестирования навигации вчера, 3 часа доработки навигации". Ваша задача — извлечь данные для каждой упомянутой задачи и вернуть их в формате массива JSON-объектов. Если текст некорректен или не содержит достаточно информации, верните JSON с ошибкой.
+Вы — помощник, который анализирует текст на русском языке и извлекает информацию о рабочем времени для добавления в систему учета задач. Пользователь вводит текст, описывающий деятельность по задачам в проекте "{PROJECT_NAME}", например: "2 часа на Создать код вчера, 3 часа на Создать код". Ваша задача — извлечь данные для каждой упомянутой задачи и вернуть их в формате массива JSON-объектов. Если текст некорректен или не содержит достаточно информации, верните JSON с ошибкой.
 
 **Поля и их обязательность (для каждой задачи)**:
 - hours: количество часов (обязательное, число, например, 3 или 2.5)
 - task_name: название задачи (обязательное, должно **точно** совпадать с одним из названий задач из списка, без изменений или перефразировки; например, если в списке есть "Создать код", то "создание кода" или "код" должны сопоставляться с "Создать код")
 - date: дата в формате YYYY-MM-DD (обязательное, если указано "сегодня" — использовать 2025-04-22; если "вчера" — использовать 2025-04-21; если указана конкретная дата — использовать её; если дата не указана — использовать текущую дату 2025-04-22; если есть предыдущая задача в тексте, наследовать её дату)
-- activity_type: тип деятельности (обязательное, должно соответствовать одному из списка: ["Разработка", "Тестирование", "Анализ", "Документация"]; если не указано — использовать "Разработка"; слова, такие как "доработать", подразумевают "Разработка")
 
 **Данные проекта "{PROJECT_NAME}"**:
 - Задачи: {TASKS}
@@ -31,24 +31,23 @@ SYSTEM_PROMPT_TEMPLATE = """
 - Если hours не является положительным числом, вернуть ошибку.
 - Если task_name не соответствует ни одному названию из списка задач, вернуть ошибку.
 - Если date не удалось извлечь или она некорректна, вернуть ошибку.
-- Если activity_type не соответствует списку, вернуть ошибку.
 - Если текст не содержит осмысленных данных (например, случайные слова), вернуть ошибку.
 - Формат ошибки: {{ "error": "описание ошибки, какие поля отсутствуют или некорректны для какой задачи" }}
 - Вернуть только JSON (массив объектов или объект с ошибкой), без дополнительного текста.
 
 **Примеры**:
-1. Ввод: "2 часа тестирования Создать код вчера, 3 часа доработки Создать код"
+1. Ввод: "2 часа на Создать код вчера, 3 часа на Создать код"
    Вывод: [
-     {{ "hours": 2, "task_name": "Создать код", "date": "2025-04-21", "activity_type": "Тестирование" }},
-     {{ "hours": 3, "task_name": "Создать код", "date": "2025-04-21", "activity_type": "Разработка" }}
+     {{ "hours": 2, "task_name": "Создать код", "date": "2025-04-21" }},
+     {{ "hours": 3, "task_name": "Создать код", "date": "2025-04-21" }}
    ]
-2. Ввод: "3 часа как разработка в создание кода сегодня"
+2. Ввод: "3 часа на создание кода сегодня"
    Вывод: [
-     {{ "hours": 3, "task_name": "Создать код", "date": "2025-04-22", "activity_type": "Разработка" }}
+     {{ "hours": 3, "task_name": "Создать код", "date": "2025-04-22" }}
    ]
-3. Ввод: "2 часа тестирования Создать код"
+3. Ввод: "2 часа на Создать код"
    Вывод: [
-     {{ "hours": 2, "task_name": "Создать код", "date": "2025-04-22", "activity_type": "Тестирование" }}
+     {{ "hours": 2, "task_name": "Создать код", "date": "2025-04-22" }}
    ]
 4. Ввод: "2 часа над чем-то"
    Вывод: {{ "error": "Название задачи не указано или не соответствует списку задач" }}
@@ -57,14 +56,28 @@ SYSTEM_PROMPT_TEMPLATE = """
 6. Ввод: "fhdasf difjhads"
    Вывод: {{ "error": "Текст не содержит осмысленной информации о задачах или часах" }}
 
-Текущая дата: 2025-04-22
+Текущая дата: {DATE}
 
 Текст для анализа: "{TEXT}"
 """
 
 async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Обработка текстового ввода для добавления часов."""
-    user_input = update.message.text
+    """Обработка текстового или голосового ввода для добавления часов."""
+    user_input = None
+    input_type = "текстового"
+
+    # Проверяем, является ли сообщение голосовым
+    if update.message.voice:
+        try:
+            user_input = await process_voice_message(update, context)
+            input_type = "голосового"
+            await update.message.reply_text(f"Распознанный текст: {user_input}")
+        except Exception as e:
+            await update.message.reply_text(f"Ошибка распознавания голосового сообщения: {str(e)}")
+            return TimeStates.TEXT_INPUT.value
+    else:
+        user_input = update.message.text
+
     project_id = context.user_data['project_id']
     project_name = context.user_data['project_name']
     tasks = context.user_data['tasks']
@@ -102,7 +115,7 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     print(f"Project: {project_name}")
     print(f"Tasks: {json.dumps(task_list, ensure_ascii=False)}")
     print(f"Users: {json.dumps(user_names, ensure_ascii=False)}")
-    print(f"Input: {user_input}")
+    print(f"Input ({input_type}): {user_input}")
     print(f"Selected user_id: {user_id} for Telegram ID: {telegram_id}")
 
     # Формирование промта
@@ -111,6 +124,7 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             PROJECT_NAME=project_name,
             TASKS=json.dumps(task_list, ensure_ascii=False),
             USERS=json.dumps(user_names, ensure_ascii=False),
+            DATE=datetime.now().strftime("%Y-%m-%d"),
             TEXT=user_input
         )
         print(f"Generated prompt: {prompt}")
@@ -138,7 +152,7 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         # Обработка каждой задачи
         for entry in data:
             # Проверка обязательных полей
-            required_fields = ['hours', 'task_name', 'date', 'activity_type']
+            required_fields = ['hours', 'task_name', 'date']
             if not all(field in entry for field in required_fields):
                 await update.message.reply_text(f"Ошибка: Отсутствуют обязательные поля для одной из задач.")
                 return TimeStates.TEXT_INPUT.value
@@ -163,7 +177,7 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             payload = {
                 "hours": f"PT{hours}H",
                 "spentOn": entry['date'],
-                "comment": {"raw": f"Тип деятельности: {entry['activity_type']}"},
+                "comment": {"raw": f"Создано ботом на основе {input_type} ввода: {user_input}"},
                 "_links": {
                     "workPackage": {"href": f"/api/v3/work_packages/{selected_task['id']}"},
                     "user": {"href": f"/api/v3/users/{user_id}"},
@@ -178,7 +192,6 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
         # Если все запросы успешны
         await update.message.reply_text("Все часы успешно добавлены!")
-        # Спрашиваем, хочет ли пользователь добавить еще часы
         keyboard = [["Добавить еще часы"], ["Вернуться в меню"]]
         await update.message.reply_text(
             "Хотите добавить еще часы для другого проекта или задачи?",

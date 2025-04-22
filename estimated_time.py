@@ -129,41 +129,23 @@ async def handle_date_choice_time(update: Update, context: ContextTypes.DEFAULT_
         context.user_data['selected_date'] = result
         await query.edit_message_text(f"Выбрана дата: {result}")
 
-        activity_types = ["Разработка", "Тестирование", "Анализ", "Документация"]
-        keyboard = [[activity] for activity in activity_types]
+        members = get_project_members(context.user_data['project_id'])
+        if not members or "_embedded" not in members or not members["_embedded"]["elements"]:
+            await update.message.reply_text("Не удалось загрузить участников проекта.")
+            return await show_main_menu(update, context)
+
+        project_users = [
+            {"id": m["_links"]["principal"]["href"].split("/")[-1], "name": m["_links"]["principal"].get("title", f"User {m['_links']['principal']['href'].split('/')[-1]}")}
+            for m in members["_embedded"]["elements"] if "principal" in m["_links"]
+        ]
+        context.user_data['project_users'] = project_users
+        user_names = [u["name"] for u in project_users]
+        keyboard = [[name] for name in user_names]
         await query.message.reply_text(
-            "Выберите тип деятельности:",
+            "Выберите сотрудника:",
             reply_markup=ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
         )
-        return TimeStates.ACTIVITY_TYPE_TIME.value
-
-async def handle_activity_type_time(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Обработка выбора типа деятельности."""
-    activity_type = update.message.text
-    context.user_data['activity_type'] = activity_type
-
-    project_id = context.user_data['project_id']
-    members = get_project_members(project_id)
-    if not members or "_embedded" not in members or not members["_embedded"]["elements"]:
-        await update.message.reply_text("Не удалось загрузить участников проекта.")
-        return await show_main_menu(update, context)
-
-    project_users = []
-    for member in members["_embedded"]["elements"]:
-        user_link = member["_links"].get("principal", {})
-        if user_link and "href" in user_link:
-            user_id = user_link["href"].split("/")[-1]
-            user_name = user_link.get("title", f"User {user_id}")
-            project_users.append({"id": user_id, "name": user_name})
-
-    context.user_data['project_users'] = project_users
-    user_names = [u["name"] for u in project_users]
-    keyboard = [[name] for name in user_names]
-    await update.message.reply_text(
-        "Выберите сотрудника:",
-        reply_markup=ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-    )
-    return TimeStates.PERSON_CHOICE_TIME.value
+        return TimeStates.PERSON_CHOICE_TIME.value
 
 async def handle_person_choice_time(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Обработка выбора сотрудника."""
@@ -195,7 +177,6 @@ async def handle_hours_input_time(update: Update, context: ContextTypes.DEFAULT_
 
     task = context.user_data['selected_task']
     person_id = context.user_data['selected_person_id']
-    activity_type = context.user_data['activity_type']
     selected_date = context.user_data['selected_date']
 
     url = f"{OP_API_URL}/time_entries"
@@ -203,7 +184,6 @@ async def handle_hours_input_time(update: Update, context: ContextTypes.DEFAULT_
     payload = {
         "hours": f"PT{hours}H",
         "spentOn": selected_date,
-        "comment": {"raw": f"Тип деятельности: {activity_type}"},
         "_links": {
             "workPackage": {"href": f"/api/v3/work_packages/{task['id']}"},
             "user": {"href": f"/api/v3/users/{person_id}"},
@@ -215,7 +195,7 @@ async def handle_hours_input_time(update: Update, context: ContextTypes.DEFAULT_
     if response.status_code == 201:
         await update.message.reply_text(
             f"Добавлено {hours} часов для задачи '{task['subject']}' на {selected_date} "
-            f"для пользователя {person_id} (тип: {activity_type})."
+            f"для пользователя {person_id}."
         )
     else:
         await update.message.reply_text(f"Ошибка при добавлении часов: {response.text}")
@@ -236,7 +216,6 @@ async def handle_add_another_time(update: Update, context: ContextTypes.DEFAULT_
         # Очищаем предыдущие данные, чтобы начать заново
         context.user_data.pop('selected_task', None)
         context.user_data.pop('selected_date', None)
-        context.user_data.pop('activity_type', None)
         context.user_data.pop('selected_person_id', None)
         context.user_data.pop('project_id', None)
         context.user_data.pop('tasks', None)
@@ -264,7 +243,7 @@ async def handle_project_choice_text(update: Update, context: ContextTypes.DEFAU
 
     context.user_data['tasks'] = tasks
     await update.message.reply_text(
-        "Введите информацию о часах, например: '2 часа тестирования навигации вчера, 3 часа доработки навигации'",
+        "Введите информацию о часах или отправьте голосовое сообщение, например: '2 часа на Создать код вчера'",
         reply_markup=ReplyKeyboardRemove()
     )
     return TimeStates.TEXT_INPUT.value
