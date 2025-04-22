@@ -4,22 +4,8 @@ from telegram.ext import ContextTypes, ConversationHandler
 import requests
 from typing import Dict, Optional
 from custom_calendar import CustomCalendar
-
-
-# Функция для получения участников проекта через фильтр
-def get_project_members(project_id: str) -> Optional[Dict]:
-    url = f"{OP_API_URL}/memberships"
-    headers = {"Content-Type": "application/json"}
-    params = {
-        "filters": f'[{{"project":{{"operator":"=","values":["{project_id}"]}}}}]'
-    }
-    response = requests.get(url, headers=headers, params=params, auth=("apikey", OP_API_KEY))
-    if response.status_code == 200:
-        return response.json()
-    else:
-        print(f"Ошибка при получении участников проекта: {response.status_code} - {response.text}")
-        return None
-
+from utils import show_main_menu
+from states import TaskStates
 
 async def get_project_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     project_name = update.message.text
@@ -32,17 +18,15 @@ async def get_project_choice(update: Update, context: ContextTypes.DEFAULT_TYPE)
             f"Вы выбрали проект: {project_name}\nВведите название задачи:",
             reply_markup=ReplyKeyboardRemove()
         )
-        return TASK_NAME
+        return TaskStates.TASK_NAME.value
     else:
         await update.message.reply_text("Проект не найден. Попробуйте снова:")
-        return PROJECT_CHOICE
-
+        return TaskStates.PROJECT_CHOICE.value
 
 async def get_task_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data['task_name'] = update.message.text
     await update.message.reply_text("Введите описание задачи:")
-    return TASK_DESCRIPTION
-
+    return TaskStates.TASK_DESCRIPTION.value
 
 async def get_task_description(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data['task_description'] = update.message.text
@@ -51,7 +35,7 @@ async def get_task_description(update: Update, context: ContextTypes.DEFAULT_TYP
     members = get_project_members(project_id)
     if not members or "_embedded" not in members or not members["_embedded"]["elements"]:
         await update.message.reply_text("Не удалось загрузить участников проекта или проект пуст.")
-        return ConversationHandler.END
+        return await show_main_menu(update, context)
 
     project_users = []
     for member in members["_embedded"]["elements"]:
@@ -68,8 +52,7 @@ async def get_task_description(update: Update, context: ContextTypes.DEFAULT_TYP
         "Выберите ответственного (assignee):",
         reply_markup=ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
     )
-    return ASSIGNEE_CHOICE
-
+    return TaskStates.ASSIGNEE_CHOICE.value
 
 async def get_assignee_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     assignee_name = update.message.text
@@ -82,7 +65,7 @@ async def get_assignee_choice(update: Update, context: ContextTypes.DEFAULT_TYPE
         context.user_data['assignee_id'] = selected_user['id']
     else:
         await update.message.reply_text("Пользователь не найден. Попробуйте снова:")
-        return ASSIGNEE_CHOICE
+        return TaskStates.ASSIGNEE_CHOICE.value
 
     user_names = [u["name"] for u in users] + ["Никого"]
     keyboard = [[name] for name in user_names]
@@ -90,8 +73,7 @@ async def get_assignee_choice(update: Update, context: ContextTypes.DEFAULT_TYPE
         "Выберите подотчетного (responsible):",
         reply_markup=ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
     )
-    return RESPONSIBLE_CHOICE
-
+    return TaskStates.RESPONSIBLE_CHOICE.value
 
 async def get_responsible_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     responsible_name = update.message.text
@@ -104,16 +86,15 @@ async def get_responsible_choice(update: Update, context: ContextTypes.DEFAULT_T
         context.user_data['responsible_id'] = selected_user['id']
     else:
         await update.message.reply_text("Пользователь не найден. Попробуйте снова:")
-        return RESPONSIBLE_CHOICE
+        return TaskStates.RESPONSIBLE_CHOICE.value
 
-    context.user_data['calendar'] = CustomCalendar()  # Инициализируем календарь
+    context.user_data['calendar'] = CustomCalendar()
     calendar_markup = context.user_data['calendar'].build_month()
     await update.message.reply_text(
         "Выберите дату начала задачи:",
         reply_markup=calendar_markup
     )
-    return START_DATE
-
+    return TaskStates.START_DATE.value
 
 async def get_start_date(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
@@ -121,32 +102,31 @@ async def get_start_date(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         calendar = context.user_data['calendar']
         result = calendar.process(query.data)
 
-        if result is None:  # Пропустить
+        if result is None:
             context.user_data['start_date'] = None
-            context.user_data['calendar'] = CustomCalendar()  # Новый календарь для даты окончания
+            context.user_data['calendar'] = CustomCalendar()
             calendar_markup = context.user_data['calendar'].build_month()
             await query.edit_message_text("Дата начала пропущена.")
             await query.message.reply_text(
                 "Выберите дату окончания задачи:",
                 reply_markup=calendar_markup
             )
-            return DUE_DATE
-        elif result is False:  # Переключение месяца
+            return TaskStates.DUE_DATE.value
+        elif result is False:
             calendar_markup = calendar.build_month()
             await query.edit_message_reply_markup(reply_markup=calendar_markup)
             await query.answer()
-            return START_DATE
-        else:  # Дата выбрана
+            return TaskStates.START_DATE.value
+        else:
             context.user_data['start_date'] = result
-            context.user_data['calendar'] = CustomCalendar()  # Новый календарь для даты окончания
+            context.user_data['calendar'] = CustomCalendar()
             calendar_markup = context.user_data['calendar'].build_month()
             await query.edit_message_text(f"Выбрана дата начала: {result}")
             await query.message.reply_text(
                 "Выберите дату окончания задачи:",
                 reply_markup=calendar_markup
             )
-            return DUE_DATE
-
+            return TaskStates.DUE_DATE.value
 
 async def get_due_date(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
@@ -154,28 +134,27 @@ async def get_due_date(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         calendar = context.user_data['calendar']
         result = calendar.process(query.data)
 
-        if result is None:  # Пропустить
+        if result is None:
             context.user_data['due_date'] = None
             await query.edit_message_text("Дата окончания пропущена.")
             await query.message.reply_text(
                 "Введите количество часов на задачу (например, 8) или 'Пропустить':",
                 reply_markup=ReplyKeyboardRemove()
             )
-            return ESTIMATED_TIME
-        elif result is False:  # Переключение месяца
+            return TaskStates.ESTIMATED_TIME.value
+        elif result is False:
             calendar_markup = calendar.build_month()
             await query.edit_message_reply_markup(reply_markup=calendar_markup)
             await query.answer()
-            return DUE_DATE
-        else:  # Дата выбрана
+            return TaskStates.DUE_DATE.value
+        else:
             context.user_data['due_date'] = result
             await query.edit_message_text(f"Выбрана дата окончания: {result}")
             await query.message.reply_text(
                 "Введите количество часов на задачу (например, 8) или 'Пропустить':",
                 reply_markup=ReplyKeyboardRemove()
             )
-            return ESTIMATED_TIME
-
+            return TaskStates.ESTIMATED_TIME.value
 
 async def get_estimated_time(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     estimated_time_input = update.message.text
@@ -189,7 +168,7 @@ async def get_estimated_time(update: Update, context: ContextTypes.DEFAULT_TYPE)
             context.user_data['estimated_time'] = str(hours)
         except ValueError:
             await update.message.reply_text("Введите положительное число часов или 'Пропустить':")
-            return ESTIMATED_TIME
+            return TaskStates.ESTIMATED_TIME.value
 
     project_id = context.user_data['project_id']
     task_name = context.user_data['task_name']
@@ -207,26 +186,30 @@ async def get_estimated_time(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     if result:
         await update.message.reply_text(
-            f"Задача '{task_name}' создана в проекте {project_id}! ID: {result['id']}",
-            reply_markup=ReplyKeyboardMarkup(
-                [["Создать задачу"]], one_time_keyboard=False, resize_keyboard=True
-            )
+            f"Задача '{task_name}' создана в проекте {project_id}! ID: {result['id']}"
         )
     else:
-        await update.message.reply_text(
-            "Ошибка при создании задачи.",
-            reply_markup=ReplyKeyboardMarkup(
-                [["Создать задачу"]], one_time_keyboard=False, resize_keyboard=True
-            )
-        )
+        await update.message.reply_text("Ошибка при создании задачи.")
 
-    return MENU
+    return await show_main_menu(update, context)
 
+def get_project_members(project_id: str) -> Optional[Dict]:
+    url = f"{OP_API_URL}/memberships"
+    headers = {"Content-Type": "application/json"}
+    params = {
+        "filters": f'[{{"project":{{"operator":"=","values":["{project_id}"]}}}}]'
+    }
+    response = requests.get(url, headers=headers, params=params, auth=("apikey", OP_API_KEY))
+    if response.status_code == 200:
+        return response.json()
+    else:
+        print(f"Ошибка при получении участников проекта: {response.status_code} - {response.text}")
+        return None
 
 def create_openproject_task(project_id: str, task_name: str, task_description: str,
-                            assignee_id: Optional[str] = None, responsible_id: Optional[str] = None,
-                            start_date: Optional[str] = None, due_date: Optional[str] = None,
-                            estimated_time: Optional[str] = None) -> Optional[Dict]:
+                           assignee_id: Optional[str] = None, responsible_id: Optional[str] = None,
+                           start_date: Optional[str] = None, due_date: Optional[str] = None,
+                           estimated_time: Optional[str] = None) -> Optional[Dict]:
     url = f"{OP_API_URL}/work_packages"
     headers = {"Content-Type": "application/json"}
     payload = {

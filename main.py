@@ -1,20 +1,30 @@
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
+from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler, ContextTypes, CallbackQueryHandler
 from typing import Dict, Optional
 import requests
 from variables import *
-from create_task import (get_project_choice, get_task_name, get_task_description,
-                        get_assignee_choice, get_responsible_choice, get_start_date,
-                        get_due_date, get_estimated_time, create_openproject_task)
-from estimated_time import (get_project_choice_time, handle_project_choice_time, handle_task_choice_time,
-                             handle_date_choice_time, handle_activity_type_time, handle_person_choice_time,
-                             handle_hours_input_time, PROJECT_CHOICE_TIME, TASK_CHOICE_TIME, DATE_CHOICE_TIME,
-                             ACTIVITY_TYPE_TIME, PERSON_CHOICE_TIME, HOURS_INPUT_TIME)
+from create_task import (
+    get_project_choice, get_task_name, get_task_description,
+    get_assignee_choice, get_responsible_choice, get_start_date,
+    get_due_date, get_estimated_time, create_openproject_task
+)
+from estimated_time import (
+    choose_input_method, handle_input_method_choice, get_project_choice_time, handle_project_choice_time,
+    handle_task_choice_time, handle_date_choice_time, handle_activity_type_time, handle_person_choice_time,
+    handle_hours_input_time, handle_add_another_time, handle_project_choice_text
+)
+from parse_text_input import handle_text_input
+from calculate_hours import (
+    get_employee_choice, handle_employee_choice, handle_start_date_calc, handle_end_date_calc
+)
+from utils import show_main_menu, get_openproject_projects
+from states import MainStates, TaskStates, TimeStates, CalcStates
 
 # Глобальный словарь для хранения Telegram ID пользователей
-USER_TELEGRAM_IDS = {}
+USER_TELEGRAM_IDS: Dict[str, int] = {}
 
 def load_users_telegram_ids() -> None:
+    """Загружает Telegram ID пользователей из OpenProject."""
     url = f"{OP_API_URL}/users"
     headers = {"Content-Type": "application/json"}
     response = requests.get(url, headers=headers, auth=("apikey", OP_API_KEY))
@@ -28,17 +38,8 @@ def load_users_telegram_ids() -> None:
     else:
         print(f"Ошибка при загрузке пользователей: {response.status_code} - {response.text}")
 
-def get_openproject_projects() -> Optional[Dict]:
-    url = f"{OP_API_URL}/projects"
-    headers = {"Content-Type": "application/json"}
-    response = requests.get(url, headers=headers, auth=("apikey", OP_API_KEY))
-    if response.status_code == 200:
-        return response.json()
-    else:
-        print(f"Ошибка при получении проектов: {response.status_code} - {response.text}")
-        return None
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обработчик команды /start."""
     telegram_id = str(update.message.from_user.id)
     telegram_username = update.message.from_user.username or ""
 
@@ -48,15 +49,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     if user_id:
         context.user_data['user_id'] = user_id
-        await update.message.reply_text(
-            "Добро пожаловать! Выберите действие:",
-            reply_markup=ReplyKeyboardMarkup(
-                [["Создать задачу"], ["Добавить часы в задачу"]],
-                one_time_keyboard=False,
-                resize_keyboard=True
-            )
-        )
-        return MENU
+        context.bot_data['USER_TELEGRAM_IDS'] = USER_TELEGRAM_IDS  # Сохраняем для доступа в других модулях
+        return await show_main_menu(update, context)
     else:
         await update.message.reply_text(
             "Ваш Telegram ID или username не зарегистрирован в OpenProject. Обратитесь к администратору."
@@ -64,6 +58,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         return ConversationHandler.END
 
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обработчик выбора в главном меню."""
     choice = update.message.text
     if choice == "Создать задачу":
         projects = get_openproject_projects()
@@ -78,30 +73,27 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             "Выберите проект:",
             reply_markup=ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
         )
-        return PROJECT_CHOICE
+        return TaskStates.PROJECT_CHOICE.value
     elif choice == "Добавить часы в задачу":
-        return await get_project_choice_time(update, context)
+        return await choose_input_method(update, context)
+    elif choice == "Рассчитать часы сотрудника":
+        return await get_employee_choice(update, context)
     else:
-        await update.message.reply_text(
-            "Выберите действие из меню:",
-            reply_markup=ReplyKeyboardMarkup(
-                [["Создать задачу"], ["Добавить часы в задачу"]],
-                one_time_keyboard=False,
-                resize_keyboard=True
-            )
-        )
-        return MENU
+        await update.message.reply_text("Пожалуйста, выберите действие из меню.")
+        return await show_main_menu(update, context)
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    return await start(update, context)
+    """Обработчик команды /cancel."""
+    return await show_main_menu(update, context)
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Обработчик ошибок"""
+    """Обработчик ошибок."""
     print(f"Произошла ошибка: {context.error}")
     if update and update.message:
         await update.message.reply_text("Произошла ошибка. Попробуйте снова или обратитесь к администратору.")
 
 def main():
+    """Запускает бота."""
     load_users_telegram_ids()
 
     if not USER_TELEGRAM_IDS:
@@ -110,30 +102,42 @@ def main():
 
     application = Application.builder().token(TELEGRAM_TOKEN).build()
 
+    # Сохраняем USER_TELEGRAM_IDS в bot_data
+    application.bot_data['USER_TELEGRAM_IDS'] = USER_TELEGRAM_IDS
+
     conv_handler = ConversationHandler(
-        entry_points=[CommandHandler('start', start)],
+        entry_points=[
+            CommandHandler('start', start),
+        ],
         states={
-            MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, menu)],
-            PROJECT_CHOICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_project_choice)],
-            TASK_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_task_name)],
-            TASK_DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_task_description)],
-            ASSIGNEE_CHOICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_assignee_choice)],
-            RESPONSIBLE_CHOICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_responsible_choice)],
-            START_DATE: [CallbackQueryHandler(get_start_date)],
-            DUE_DATE: [CallbackQueryHandler(get_due_date)],
-            ESTIMATED_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_estimated_time)],
-            PROJECT_CHOICE_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_project_choice_time)],
-            TASK_CHOICE_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_task_choice_time)],
-            DATE_CHOICE_TIME: [CallbackQueryHandler(handle_date_choice_time)],
-            ACTIVITY_TYPE_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_activity_type_time)],
-            PERSON_CHOICE_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_person_choice_time)],
-            HOURS_INPUT_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_hours_input_time)],
+            MainStates.MENU.value: [MessageHandler(filters.TEXT & ~filters.COMMAND, menu)],
+            TaskStates.PROJECT_CHOICE.value: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_project_choice)],
+            TaskStates.TASK_NAME.value: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_task_name)],
+            TaskStates.TASK_DESCRIPTION.value: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_task_description)],
+            TaskStates.ASSIGNEE_CHOICE.value: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_assignee_choice)],
+            TaskStates.RESPONSIBLE_CHOICE.value: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_responsible_choice)],
+            TaskStates.START_DATE.value: [CallbackQueryHandler(get_start_date)],
+            TaskStates.DUE_DATE.value: [CallbackQueryHandler(get_due_date)],
+            TaskStates.ESTIMATED_TIME.value: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_estimated_time)],
+            TimeStates.INPUT_METHOD_CHOICE.value: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_input_method_choice)],
+            TimeStates.PROJECT_CHOICE_TEXT.value: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_project_choice_text)],
+            TimeStates.TEXT_INPUT.value: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_input)],
+            TimeStates.PROJECT_CHOICE_TIME.value: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_project_choice_time)],
+            TimeStates.TASK_CHOICE_TIME.value: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_task_choice_time)],
+            TimeStates.DATE_CHOICE_TIME.value: [CallbackQueryHandler(handle_date_choice_time)],
+            TimeStates.ACTIVITY_TYPE_TIME.value: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_activity_type_time)],
+            TimeStates.PERSON_CHOICE_TIME.value: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_person_choice_time)],
+            TimeStates.HOURS_INPUT_TIME.value: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_hours_input_time)],
+            TimeStates.ADD_ANOTHER_TIME.value: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_add_another_time)],
+            CalcStates.EMPLOYEE_CHOICE.value: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_employee_choice)],
+            CalcStates.START_DATE_CALC.value: [CallbackQueryHandler(handle_start_date_calc)],
+            CalcStates.END_DATE_CALC.value: [CallbackQueryHandler(handle_end_date_calc)],
         },
         fallbacks=[CommandHandler('cancel', cancel)],
     )
 
     application.add_handler(conv_handler)
-    application.add_error_handler(error_handler)
+    #application.add_error_handler(error_handler)
     application.run_polling()
 
 if __name__ == '__main__':
