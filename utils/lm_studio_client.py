@@ -1,5 +1,7 @@
-import requests
 import json
+
+import requests
+
 
 class LMStudioClient:
     def __init__(self, url="http://localhost:1234/v1/chat/completions", model="gemma-3-4b-it-qat"):

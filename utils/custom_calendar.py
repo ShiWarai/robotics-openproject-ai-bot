@@ -1,5 +1,6 @@
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from datetime import datetime
+
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 
 class CustomCalendar:
@@ -35,12 +36,19 @@ class CustomCalendar:
         start_weekday = first_day.weekday()  # 0 = Понедельник, 6 = Воскресенье
         week = [" " for _ in range(start_weekday)]  # Пустые клетки до начала месяца
 
+        # Определяем текущий день для выделения
+        today = datetime.now()
+        is_current_month = today.year == year and today.month == month
+        current_day = today.day if is_current_month else None
+
         for day in range(1, days_in_month + 1):
-            week.append(str(day))
+            # Добавляем эмодзи 🟢 для текущего дня
+            display_text = f"🟢 {day}" if day == current_day else str(day)
+            week.append(display_text)
             if len(week) == 7:
                 keyboard.append([InlineKeyboardButton(
                     d if d != " " else " ",
-                    callback_data=f"day_{year}_{month:02d}_{int(d):02d}" if d != " " else "ignore"
+                    callback_data=f"day_{year}_{month:02d}_{int(d.replace('🟢 ', '')):02d}" if d != " " and d.startswith("🟢") else f"day_{year}_{month:02d}_{int(d):02d}" if d != " " else "ignore"
                 ) for d in week])
                 week = []
 
@@ -48,7 +56,7 @@ class CustomCalendar:
             week += [" " for _ in range(7 - len(week))]
             keyboard.append([InlineKeyboardButton(
                 d if d != " " else " ",
-                callback_data=f"day_{year}_{month:02d}_{int(d):02d}" if d != " " else "ignore"
+                callback_data=f"day_{year}_{month:02d}_{int(d.replace('🟢 ', '')):02d}" if d != " " and d.startswith("🟢") else f"day_{year}_{month:02d}_{int(d):02d}" if d != " " else "ignore"
             ) for d in week])
 
         # Кнопки навигации

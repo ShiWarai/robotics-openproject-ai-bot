@@ -1,24 +1,27 @@
-from telegram import Update, ReplyKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler, ContextTypes, CallbackQueryHandler
 from typing import Dict, Optional
+
 import requests
-from variables import *
-from create_task import (
+from telegram import Update, ReplyKeyboardMarkup
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler, ContextTypes, \
+    CallbackQueryHandler
+
+from calculate_hours.calculate_hours import (
+    get_employee_choice, handle_employee_choice, handle_start_date_calc, handle_end_date_calc
+)
+from create_task.create_task import (
     get_project_choice, get_task_name, get_task_description,
     get_assignee_choice, get_responsible_choice, get_start_date,
-    get_due_date, get_estimated_time, create_openproject_task
+    get_due_date, get_estimated_time
 )
-from estimated_time import (
-    choose_input_method, handle_input_method_choice, get_project_choice_time, handle_project_choice_time,
+from estimated_time.estimated_time import (
+    choose_input_method, handle_input_method_choice, handle_project_choice_time,
     handle_task_choice_time, handle_date_choice_time, handle_person_choice_time,
     handle_hours_input_time, handle_add_another_time, handle_project_choice_text
 )
-from parse_text_input import handle_text_input
-from calculate_hours import (
-    get_employee_choice, handle_employee_choice, handle_start_date_calc, handle_end_date_calc
-)
-from utils import show_main_menu, get_openproject_projects
+from estimated_time.parse_text_input import handle_text_input
 from states import MainStates, TaskStates, TimeStates, CalcStates
+from utils.utils import show_main_menu, get_projects
+from variables import *
 
 # Глобальный словарь для хранения Telegram ID пользователей
 USER_TELEGRAM_IDS: Dict[str, int] = {}
@@ -56,11 +59,29 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         )
         return ConversationHandler.END
 
+async def auto_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Optional[int]:
+    """Обработчик для автоматического открытия меню для известных пользователей."""
+    telegram_id = str(update.message.from_user.id)
+    telegram_username = update.message.from_user.username or ""
+
+    user_id = USER_TELEGRAM_IDS.get(telegram_id)
+    if not user_id and telegram_username:
+        user_id = USER_TELEGRAM_IDS.get(telegram_username)
+
+    if user_id:
+        context.user_data['user_id'] = user_id
+        return await show_main_menu(update, context)
+    else:
+        await update.message.reply_text(
+            "Ваш Telegram ID или username не зарегистрирован в OpenProject. Введите /start для начала работы."
+        )
+        return None
+
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Обработчик выбора в главном меню."""
     choice = update.message.text
     if choice == "Создать задачу":
-        projects = get_openproject_projects()
+        projects = get_projects()
         if not projects or "_embedded" not in projects or not projects["_embedded"]["elements"]:
             await update.message.reply_text("Не удалось загрузить список проектов.")
             return ConversationHandler.END
@@ -107,6 +128,7 @@ def main():
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler('start', start),
+            MessageHandler(filters.TEXT & ~filters.COMMAND, auto_menu),  # Добавляем обработчик для любых текстовых сообщений
         ],
         states={
             MainStates.MENU.value: [MessageHandler(filters.TEXT & ~filters.COMMAND, menu)],

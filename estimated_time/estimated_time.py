@@ -1,21 +1,12 @@
-from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
-from telegram.ext import ContextTypes, ConversationHandler
 import requests
-from variables import OP_API_URL, OP_API_KEY
-from typing import Optional
-from create_task import get_project_members, CustomCalendar
-from utils import show_main_menu, get_openproject_projects
-from states import TimeStates
+from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
+from telegram.ext import ContextTypes
 
-def get_project_tasks(project_id: str) -> Optional[list]:
-    """Получение задач конкретного проекта."""
-    url = f"{OP_API_URL}/projects/{project_id}/work_packages"
-    headers = {"Content-Type": "application/json"}
-    response = requests.get(url, headers=headers, auth=("apikey", OP_API_KEY))
-    if response.status_code == 200:
-        return response.json()["_embedded"]["elements"]
-    print(f"Ошибка при получении задач проекта: {response.status_code} - {response.text}")
-    return None
+from states import TimeStates
+from utils.custom_calendar import CustomCalendar
+from utils.utils import show_main_menu, get_projects, get_project_tasks, get_project_members
+from variables import OP_API_URL, OP_API_KEY
+
 
 async def choose_input_method(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Предлагает пользователю выбрать способ ввода для добавления часов."""
@@ -32,7 +23,7 @@ async def handle_input_method_choice(update: Update, context: ContextTypes.DEFAU
     if choice == "Через меню":
         return await get_project_choice_time(update, context)
     elif choice == "Текстом":
-        projects = get_openproject_projects()
+        projects = get_projects()
         if not projects or "_embedded" not in projects or not projects["_embedded"]["elements"]:
             await update.message.reply_text("Не удалось загрузить список проектов.")
             return await show_main_menu(update, context)
@@ -51,7 +42,7 @@ async def handle_input_method_choice(update: Update, context: ContextTypes.DEFAU
 
 async def get_project_choice_time(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Выбор проекта для добавления часов через меню."""
-    projects = get_openproject_projects()
+    projects = get_projects()
     if not projects or "_embedded" not in projects or not projects["_embedded"]["elements"]:
         await update.message.reply_text("Не удалось загрузить список проектов.")
         return await show_main_menu(update, context)

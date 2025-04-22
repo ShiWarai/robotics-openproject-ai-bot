@@ -1,12 +1,13 @@
-import os
-import wave
 import json
+import os
 import subprocess
-from vosk import Model, KaldiRecognizer
+import wave
+
 import aiofiles
 import aiohttp
 from telegram import Update
 from telegram.ext import ContextTypes
+from vosk import Model, KaldiRecognizer
 
 # Путь к модели Vosk (нужно скачать модель, например, vosk-model-small-ru-0.22)
 MODEL_PATH = "vosk-model-small-ru-0.22"

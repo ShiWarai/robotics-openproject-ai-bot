@@ -1,15 +1,16 @@
-from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
-from telegram.ext import ContextTypes, ConversationHandler
-from datetime import datetime
-import requests
 import json
 import re
-from variables import OP_API_URL, OP_API_KEY
+from datetime import datetime
+
+import requests
+from telegram import Update, ReplyKeyboardMarkup
+from telegram.ext import ContextTypes
+
 from states import TimeStates
-from utils import show_main_menu
-from estimated_time import get_project_tasks, get_project_members
-from lm_studio_client import call_lm_studio
-from speech_recognition import process_voice_message
+from utils.lm_studio_client import call_lm_studio
+from utils.speech_recognition import process_voice_message
+from utils.utils import show_main_menu, get_project_members
+from variables import OP_API_URL, OP_API_KEY
 
 SYSTEM_PROMPT_TEMPLATE = """
 Вы — помощник, который анализирует текст на русском языке и извлекает информацию о рабочем времени для добавления в систему учета задач. Пользователь вводит текст, описывающий деятельность по задачам в проекте "{PROJECT_NAME}", например: "2 часа на Создать код вчера, 3 часа на Создать код". Ваша задача — извлечь данные для каждой упомянутой задачи и вернуть их в формате массива JSON-объектов. Если текст некорректен или не содержит достаточно информации, верните JSON с ошибкой.

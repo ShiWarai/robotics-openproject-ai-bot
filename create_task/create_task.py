@@ -1,11 +1,14 @@
-from variables import *
-from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
-from telegram.ext import ContextTypes, ConversationHandler
-import requests
 from typing import Dict, Optional
-from custom_calendar import CustomCalendar
-from utils import show_main_menu
+
+import requests
+from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
+from telegram.ext import ContextTypes
+
 from states import TaskStates
+from utils.custom_calendar import CustomCalendar
+from utils.utils import show_main_menu, get_project_members
+from variables import *
+
 
 async def get_project_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     project_name = update.message.text
@@ -192,19 +195,6 @@ async def get_estimated_time(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text("Ошибка при создании задачи.")
 
     return await show_main_menu(update, context)
-
-def get_project_members(project_id: str) -> Optional[Dict]:
-    url = f"{OP_API_URL}/memberships"
-    headers = {"Content-Type": "application/json"}
-    params = {
-        "filters": f'[{{"project":{{"operator":"=","values":["{project_id}"]}}}}]'
-    }
-    response = requests.get(url, headers=headers, params=params, auth=("apikey", OP_API_KEY))
-    if response.status_code == 200:
-        return response.json()
-    else:
-        print(f"Ошибка при получении участников проекта: {response.status_code} - {response.text}")
-        return None
 
 def create_openproject_task(project_id: str, task_name: str, task_description: str,
                            assignee_id: Optional[str] = None, responsible_id: Optional[str] = None,
