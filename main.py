@@ -16,9 +16,9 @@ from create_task.create_task import (
 from estimated_time.estimated_time import (
     choose_input_method, handle_input_method_choice, handle_project_choice_time,
     handle_task_choice_time, handle_date_choice_time, handle_person_choice_time,
-    handle_hours_input_time, handle_add_another_time, handle_project_choice_text
+    handle_hours_input_time, handle_add_another_time
 )
-from estimated_time.parse_text_input import handle_text_input
+from estimated_time.parse_text_input import handle_free_text_input, handle_text_input
 from states import MainStates, TaskStates, TimeStates, CalcStates
 from utils.utils import show_main_menu, get_projects
 from variables import *
@@ -128,7 +128,7 @@ def main():
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler('start', start),
-            MessageHandler(filters.TEXT & ~filters.COMMAND, auto_menu),  # Добавляем обработчик для любых текстовых сообщений
+            MessageHandler(filters.TEXT & ~filters.COMMAND, auto_menu),
         ],
         states={
             MainStates.MENU.value: [MessageHandler(filters.TEXT & ~filters.COMMAND, menu)],
@@ -141,10 +141,9 @@ def main():
             TaskStates.DUE_DATE.value: [CallbackQueryHandler(get_due_date)],
             TaskStates.ESTIMATED_TIME.value: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_estimated_time)],
             TimeStates.INPUT_METHOD_CHOICE.value: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_input_method_choice)],
-            TimeStates.PROJECT_CHOICE_TEXT.value: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_project_choice_text)],
-            TimeStates.TEXT_INPUT.value: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_input),
-                MessageHandler(filters.VOICE, handle_text_input)  # Добавляем обработку голосовых сообщений
+            TimeStates.FREE_TEXT_INPUT.value: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_free_text_input),
+                MessageHandler(filters.VOICE, handle_free_text_input)
             ],
             TimeStates.PROJECT_CHOICE_TIME.value: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_project_choice_time)],
             TimeStates.TASK_CHOICE_TIME.value: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_task_choice_time)],

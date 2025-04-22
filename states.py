@@ -15,11 +15,12 @@ class TaskStates(Enum):
 
 class TimeStates(Enum):
     INPUT_METHOD_CHOICE = 99
-    PROJECT_CHOICE_TEXT = 100  # Выбор проекта для текстового ввода
-    TEXT_INPUT = 101          # Ввод текста после выбора проекта
-    PROJECT_CHOICE_TIME = 102
-    TASK_CHOICE_TIME = 103
-    DATE_CHOICE_TIME = 104
+    FREE_TEXT_INPUT = 100     # Произвольный ввод текста или голосового сообщения
+    PROJECT_CHOICE_TEXT = 101 # Устаревшее состояние, оставлено для обратной совместимости
+    TEXT_INPUT = 102         # Устаревшее состояние, оставлено для обратной совместимости
+    PROJECT_CHOICE_TIME = 103
+    TASK_CHOICE_TIME = 104
+    DATE_CHOICE_TIME = 105
     PERSON_CHOICE_TIME = 106
     HOURS_INPUT_TIME = 107
     ADD_ANOTHER_TIME = 108

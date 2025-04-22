@@ -10,7 +10,7 @@ from variables import OP_API_URL, OP_API_KEY
 
 async def choose_input_method(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Предлагает пользователю выбрать способ ввода для добавления часов."""
-    keyboard = [["Через меню"], ["Текстом"]]
+    keyboard = [["Через меню"], ["Произвольный ввод"]]
     await update.message.reply_text(
         "Как вы хотите добавить часы?",
         reply_markup=ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
@@ -22,20 +22,19 @@ async def handle_input_method_choice(update: Update, context: ContextTypes.DEFAU
     choice = update.message.text
     if choice == "Через меню":
         return await get_project_choice_time(update, context)
-    elif choice == "Текстом":
+    elif choice == "Произвольный ввод":
         projects = get_projects()
         if not projects or "_embedded" not in projects or not projects["_embedded"]["elements"]:
             await update.message.reply_text("Не удалось загрузить список проектов.")
             return await show_main_menu(update, context)
 
         context.user_data['projects'] = projects["_embedded"]["elements"]
-        project_names = [p["name"] for p in projects["_embedded"]["elements"]]
-        keyboard = [[name] for name in project_names]
         await update.message.reply_text(
-            "Выберите проект для текстового ввода:",
-            reply_markup=ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+            "Введите информацию о часах (укажите проект, задачу, часы и дату) или отправьте голосовое сообщение, "
+            "например: '2 часа на Создать код в проекте Разработка вчера'",
+            reply_markup=ReplyKeyboardRemove()
         )
-        return TimeStates.PROJECT_CHOICE_TEXT.value
+        return TimeStates.FREE_TEXT_INPUT.value
     else:
         await update.message.reply_text("Пожалуйста, выберите способ ввода из предложенных.")
         return TimeStates.INPUT_METHOD_CHOICE.value
@@ -214,27 +213,3 @@ async def handle_add_another_time(update: Update, context: ContextTypes.DEFAULT_
         return await choose_input_method(update, context)
     else:
         return await show_main_menu(update, context)
-
-async def handle_project_choice_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Обработка выбранного проекта для текстового ввода."""
-    project_name = update.message.text
-    projects = context.user_data['projects']
-    selected_project = next((p for p in projects if p["name"] == project_name), None)
-
-    if not selected_project:
-        await update.message.reply_text("Проект не найден. Попробуйте снова:")
-        return TimeStates.PROJECT_CHOICE_TEXT.value
-
-    context.user_data['project_id'] = selected_project['id']
-    context.user_data['project_name'] = selected_project['name']
-    tasks = get_project_tasks(selected_project['id'])
-    if not tasks:
-        await update.message.reply_text("В этом проекте нет задач.")
-        return await show_main_menu(update, context)
-
-    context.user_data['tasks'] = tasks
-    await update.message.reply_text(
-        "Введите информацию о часах или отправьте голосовое сообщение, например: '2 часа на Создать код вчера'",
-        reply_markup=ReplyKeyboardRemove()
-    )
-    return TimeStates.TEXT_INPUT.value
