@@ -6,10 +6,10 @@ import requests
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ContextTypes
 
-from states import CalcStates
-from utils.custom_calendar import CustomCalendar
-from utils.utils import show_main_menu
-from variables import OP_API_URL, OP_API_KEY
+from app.states import CalcStates
+from app.utils.custom_calendar import CustomCalendar
+from app.utils.utils import show_main_menu
+from app.variables import OP_API_URL, OP_API_KEY
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

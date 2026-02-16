@@ -4,10 +4,10 @@ import requests
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import ContextTypes
 
-from states import TaskStates
-from utils.custom_calendar import CustomCalendar
-from utils.utils import show_main_menu, get_project_members
-from variables import *
+from app.states import TaskStates
+from app.utils.custom_calendar import CustomCalendar
+from app.utils.utils import show_main_menu, get_project_members
+from app.variables import *
 
 
 async def get_project_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:

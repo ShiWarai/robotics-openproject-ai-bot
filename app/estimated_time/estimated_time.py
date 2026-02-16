@@ -2,10 +2,10 @@ import requests
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import ContextTypes
 
-from states import TimeStates
-from utils.custom_calendar import CustomCalendar
-from utils.utils import show_main_menu, get_projects, get_project_tasks, get_project_members
-from variables import OP_API_URL, OP_API_KEY
+from app.states import TimeStates
+from app.utils.custom_calendar import CustomCalendar
+from app.utils.utils import show_main_menu, get_projects, get_project_tasks, get_project_members
+from app.variables import OP_API_URL, OP_API_KEY
 
 
 async def choose_input_method(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:

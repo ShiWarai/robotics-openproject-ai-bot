@@ -1,6 +1,5 @@
 import json
 import logging
-import os
 import re
 from datetime import datetime
 from typing import Optional
@@ -11,19 +10,12 @@ logger = logging.getLogger(__name__)
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ContextTypes
 
-from states import TimeStates
-from utils.lm_studio_client import call_lm_studio
-from utils.rkllama_client import call_rkllama
-from utils.speech_recognition import process_voice_message
-from utils.utils import show_main_menu, get_project_members, get_project_tasks
-from variables import OP_API_URL, OP_API_KEY
-
-
-def _llm_provider() -> str:
-    """Выбор провайдера LLM: rkllama или lm_studio. По умолчанию rkllama, если задан RKLLAMA_URL."""
-    return os.getenv("LLM_PROVIDER") or (
-        "rkllama" if os.getenv("RKLLAMA_URL") else "lm_studio"
-    )
+from app.states import TimeStates
+from app.utils.lm_studio_client import call_lm_studio
+from app.utils.rkllama_client import call_rkllama
+from app.utils.speech_recognition import process_voice_message
+from app.utils.utils import show_main_menu, get_project_members, get_project_tasks
+from app.variables import OP_API_URL, OP_API_KEY, LLM_PROVIDER
 
 
 async def _call_llm(
@@ -33,7 +25,7 @@ async def _call_llm(
     format_schema: Optional[dict] = None,
 ) -> str:
     """Вызов выбранного провайдера LLM. format_schema передаётся только в rkllama."""
-    if _llm_provider() == "rkllama":
+    if LLM_PROVIDER == "rkllama":
         return await call_rkllama(system_prompt, user_input, format_schema=format_schema)
     return await call_lm_studio(system_prompt, user_input)
 
@@ -221,6 +213,14 @@ async def handle_free_text_input(update: Update, context: ContextTypes.DEFAULT_T
             await update.message.reply_text("Ошибка обработки данных от модели. Попробуйте снова.")
             return TimeStates.FREE_TEXT_INPUT.value
 
+        # Ошибка связи с LLM (RKLLama/LM Studio недоступен) — не путать с «неверный формат»
+        if isinstance(data, dict) and "error" in data:
+            logger.warning("Проект: ошибка сервиса LLM — %s", data.get("error", ""))
+            await update.message.reply_text(
+                "Сервис распознавания текста временно недоступен. Проверьте, что RKLLama/Ollama запущен, или выберите «Через меню» для добавления часов."
+            )
+            return TimeStates.FREE_TEXT_INPUT.value
+
         error_code = data.get("error_code") if isinstance(data, dict) else None
         if isinstance(data, dict) and error_code is not None and error_code in PROJECT_ERROR_MESSAGES:
             logger.warning("Проект: ошибка от модели — код %s", error_code)
@@ -373,6 +373,14 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE, 
                 continue
             logger.error("Ошибка разбора JSON (часы): %s. Ответ (фрагмент): %s", e, raw_response[:500])
             await update.message.reply_text("Ошибка обработки данных от модели. Попробуйте снова.")
+            return TimeStates.FREE_TEXT_INPUT.value
+
+        # Ошибка связи с LLM — не путать с «неверный формат»
+        if isinstance(data, dict) and "error" in data:
+            logger.warning("Часы: ошибка сервиса LLM — %s", data.get("error", ""))
+            await update.message.reply_text(
+                "Сервис распознавания текста временно недоступен. Проверьте, что RKLLama/Ollama запущен, или выберите «Через меню» для добавления часов."
+            )
             return TimeStates.FREE_TEXT_INPUT.value
 
         if not isinstance(data, dict):

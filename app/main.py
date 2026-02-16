@@ -18,23 +18,23 @@ from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler, ContextTypes, \
     CallbackQueryHandler
 
-from calculate_hours.calculate_hours import (
+from app.calculate_hours.calculate_hours import (
     get_employee_choice, handle_employee_choice, handle_start_date_calc, handle_end_date_calc
 )
-from create_task.create_task import (
+from app.create_task.create_task import (
     get_project_choice, get_task_name, get_task_description,
     get_assignee_choice, get_responsible_choice, get_start_date,
     get_due_date, get_estimated_time
 )
-from estimated_time.estimated_time import (
+from app.estimated_time.estimated_time import (
     choose_input_method, handle_input_method_choice, handle_project_choice_time,
     handle_task_choice_time, handle_date_choice_time, handle_person_choice_time,
     handle_hours_input_time, handle_add_another_time
 )
-from estimated_time.parse_text_input import handle_free_text_input, handle_text_input
-from states import MainStates, TaskStates, TimeStates, CalcStates
-from utils.utils import show_main_menu, get_projects
-from variables import *
+from app.estimated_time.parse_text_input import handle_free_text_input, handle_text_input
+from app.states import MainStates, TaskStates, TimeStates, CalcStates
+from app.utils.utils import show_main_menu, get_projects
+from app.variables import *
 
 # Глобальный словарь для хранения Telegram ID пользователей
 USER_TELEGRAM_IDS: Dict[str, int] = {}

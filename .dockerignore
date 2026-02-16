@@ -1,0 +1,30 @@
+# Git и IDE
+.git
+.gitignore
+.cursor
+.vscode
+*.md
+!README.md
+
+# Секреты (в контейнер через env_file или environment)
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+.pytest_cache
+.mypy_cache
+.ruff_cache
+venv
+.venv
+env
+
+# Кэш и большие артефакты (модель Vosk монтируется volume)
+cache/
+
+# Прочее
+*.log
+.DS_Store

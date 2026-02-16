@@ -11,7 +11,8 @@ from vosk import Model, KaldiRecognizer
 
 # Модель Vosk для русского языка (нужно скачать вручную и распаковать в cache/)
 VOSK_MODEL_NAME = "vosk-model-small-ru-0.22"
-_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Корень проекта (родитель app/) — cache/ лежит там
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _CACHE_DIR = os.path.join(_PROJECT_ROOT, "cache")
 _MODEL_PATH = os.path.join(_CACHE_DIR, VOSK_MODEL_NAME)
 

@@ -1,47 +1,16 @@
 import json
-import os
 from typing import Optional, Tuple, List
 
 import requests
 
-
-def _get_url() -> Optional[str]:
-    return os.getenv("RKLLAMA_URL") or None
-
-
-def _get_model() -> Optional[str]:
-    return os.getenv("RKLLAMA_MODEL") or None
-
-
-def _get_timeout() -> Optional[int]:
-    raw = os.getenv("RKLLAMA_TIMEOUT")
-    return int(raw) if raw is not None and raw.strip() else None
-
-
-def _get_thinking() -> bool:
-    raw = os.getenv("RKLLAMA_THINKING", "").strip().lower()
-    return raw in ("1", "true", "yes", "on")
-
-
-def _get_temperature() -> Optional[float]:
-    raw = os.getenv("RKLLAMA_TEMPERATURE", "").strip()
-    if not raw:
-        return None
-    try:
-        return float(raw)
-    except ValueError:
-        return None
-
-
-def _get_max_new_tokens() -> int:
-    raw = os.getenv("RKLLAMA_MAX_NEW_TOKENS", "").strip()
-    if not raw:
-        return 4096
-    try:
-        n = int(raw)
-        return max(1, min(n, 128_000))
-    except ValueError:
-        return 4096
+from app.variables import (
+    RKLLAMA_URL,
+    RKLLAMA_MODEL,
+    RKLLAMA_TIMEOUT,
+    RKLLAMA_THINKING,
+    RKLLAMA_TEMPERATURE,
+    RKLLAMA_MAX_NEW_TOKENS,
+)
 
 
 def get_available_models(url: Optional[str] = None) -> Tuple[Optional[List[str]], Optional[str]]:
@@ -49,7 +18,7 @@ def get_available_models(url: Optional[str] = None) -> Tuple[Optional[List[str]]
     Запрашивает список моделей у RKLLama (GET /api/tags).
     Возвращает (список имён моделей, None) при успехе или (None, сообщение об ошибке).
     """
-    base_url = (url or _get_url() or "").rstrip("/")
+    base_url = (url or RKLLAMA_URL or "").rstrip("/")
     if not base_url:
         return None, "RKLLAMA_URL не задан"
     tags_url = f"{base_url}/api/tags"
@@ -69,8 +38,8 @@ def check_model_available() -> Optional[str]:
     Проверяет при старте, что RKLLAMA_MODEL есть в списке доступных моделей RKLLama.
     Печатает результат проверки в консоль. Возвращает None при успехе или пропуске, иначе — сообщение об ошибке.
     """
-    url = _get_url()
-    model = _get_model()
+    url = RKLLAMA_URL
+    model = RKLLAMA_MODEL
     if not url or not model:
         print("RKLLama: не настроен (RKLLAMA_URL или RKLLAMA_MODEL не заданы), проверка модели пропущена.")
         return None
@@ -99,10 +68,10 @@ def send_request(
     timeout: Optional[int] = None,
 ) -> str:
     """Отправка запроса к RKLLama (Ollama-совместимый API). format_schema — строгая JSON Schema. enable_thinking — режим рассуждений (по умолчанию из RKLLAMA_THINKING)."""
-    url = url or _get_url()
-    model = model or _get_model()
-    timeout = timeout if timeout is not None else _get_timeout()
-    thinking = enable_thinking if enable_thinking is not None else _get_thinking()
+    url = url or RKLLAMA_URL
+    model = model or RKLLAMA_MODEL
+    timeout = timeout if timeout is not None else RKLLAMA_TIMEOUT
+    thinking = enable_thinking if enable_thinking is not None else RKLLAMA_THINKING
     if not url or not model:
         return json.dumps({
             "error": "Не заданы RKLLAMA_URL или RKLLAMA_MODEL. Укажите их в .env."
@@ -121,8 +90,8 @@ def send_request(
         payload["format"] = format_schema
     elif format_json:
         payload["format"] = "json"
-    options = {"num_predict": _get_max_new_tokens()}
-    temp = _get_temperature()
+    options = {"num_predict": RKLLAMA_MAX_NEW_TOKENS}
+    temp = RKLLAMA_TEMPERATURE
     if temp is not None:
         options["temperature"] = temp
     payload["options"] = options

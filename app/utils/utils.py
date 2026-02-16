@@ -4,7 +4,7 @@ import requests
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ContextTypes
 
-from variables import OP_API_URL, OP_API_KEY
+from app.variables import OP_API_URL, OP_API_KEY
 
 
 async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -18,7 +18,7 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             resize_keyboard=True
         )
     )
-    from states import MainStates
+    from app.states import MainStates
     return MainStates.MENU.value
 
 def get_projects() -> Optional[Dict]:
