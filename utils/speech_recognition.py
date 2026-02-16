@@ -9,9 +9,32 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from vosk import Model, KaldiRecognizer
 
-# Путь к модели Vosk (нужно скачать модель, например, vosk-model-small-ru-0.22)
-MODEL_PATH = "vosk-model-small-ru-0.22"
-model = Model(MODEL_PATH)
+# Модель Vosk для русского языка (нужно скачать вручную и распаковать в cache/)
+VOSK_MODEL_NAME = "vosk-model-small-ru-0.22"
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_CACHE_DIR = os.path.join(_PROJECT_ROOT, "cache")
+_MODEL_PATH = os.path.join(_CACHE_DIR, VOSK_MODEL_NAME)
+
+_model = None
+
+
+def _get_model():
+    """Ленивая загрузка модели Vosk (только при первом голосовом сообщении). Модель должна быть в cache/."""
+    global _model
+    if _model is None:
+        if not os.path.isdir(_MODEL_PATH) or not os.path.exists(os.path.join(_MODEL_PATH, "conf")):
+            raise FileNotFoundError(
+                f"Модель Vosk не найдена: {_MODEL_PATH}. "
+                "Скачайте vosk-model-small-ru-0.22 с https://alphacephei.com/vosk/models и распакуйте в папку cache/."
+            )
+        _model = Model(_MODEL_PATH)
+    return _model
+
+FFMPEG_REQUIRED_MSG = (
+    "Для голосовых сообщений нужен ffmpeg. "
+    "Установите: sudo apt install ffmpeg (Linux) или скачайте с https://ffmpeg.org (Windows)."
+)
+
 
 async def convert_ogg_to_wav(ogg_path: str, wav_path: str) -> bool:
     """Конвертирует OGG файл в WAV с помощью ffmpeg."""
@@ -21,14 +44,17 @@ async def convert_ogg_to_wav(ogg_path: str, wav_path: str) -> bool:
             check=True, capture_output=True
         )
         return True
+    except FileNotFoundError as e:
+        if getattr(e, "filename", None) == "ffmpeg" or "ffmpeg" in str(e):
+            raise RuntimeError(FFMPEG_REQUIRED_MSG) from e
+        raise
     except subprocess.CalledProcessError as e:
         print(f"Ошибка конвертации OGG в WAV: {e}")
         return False
 
 async def recognize_speech(file_path: str) -> str:
     """Распознаёт речь из WAV файла с использованием Vosk."""
-    if not os.path.exists(MODEL_PATH):
-        raise FileNotFoundError(f"Модель Vosk не найдена по пути: {MODEL_PATH}")
+    model = _get_model()
 
     wf = wave.open(file_path, "rb")
     if wf.getnchannels() != 1 or wf.getsampwidth() != 2 or wf.getframerate() != 16000:
@@ -53,13 +79,15 @@ async def recognize_speech(file_path: str) -> str:
     return result_text.strip()
 
 async def process_voice_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> str:
-    """Обрабатывает голосовое сообщение, конвертирует и распознаёт речь."""
+    """Обрабатывает голосовое сообщение, конвертирует и распознаёт речь. Временные файлы — в cache/."""
     voice = update.message.voice
     file = await context.bot.get_file(voice.file_id)
 
-    # Скачиваем OGG файл
-    ogg_path = f"voice_{voice.file_unique_id}.ogg"
-    wav_path = f"voice_{voice.file_unique_id}.wav"
+    os.makedirs(_CACHE_DIR, exist_ok=True)
+    ogg_path = os.path.join(_CACHE_DIR, f"voice_{voice.file_unique_id}.ogg")
+    wav_path = os.path.join(_CACHE_DIR, f"voice_{voice.file_unique_id}.wav")
+
+    # Скачиваем OGG в cache/
     async with aiohttp.ClientSession() as session:
         async with session.get(file.file_path) as response:
             if response.status == 200:

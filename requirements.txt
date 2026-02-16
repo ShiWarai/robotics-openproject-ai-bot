@@ -1,3 +1,6 @@
 python-telegram-bot
 requests
 vosk
+python-dotenv
+aiofiles
+aiohttp

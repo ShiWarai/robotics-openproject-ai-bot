@@ -101,7 +101,15 @@ async def handle_free_text_input(update: Update, context: ContextTypes.DEFAULT_T
             input_type = "голосового"
             await update.message.reply_text(f"Распознанный текст: {user_input}")
         except Exception as e:
-            await update.message.reply_text(f"Ошибка распознавания голосового сообщения: {str(e)}")
+            msg = str(e)
+            if "ffmpeg" in msg.lower():
+                msg = (
+                    "Для голосовых сообщений нужен ffmpeg. "
+                    "Установите: sudo apt install ffmpeg (Linux) или скачайте с https://ffmpeg.org (Windows)."
+                )
+            else:
+                msg = f"Ошибка распознавания голосового сообщения: {msg}"
+            await update.message.reply_text(msg)
             return TimeStates.FREE_TEXT_INPUT.value
     else:
         user_input = update.message.text

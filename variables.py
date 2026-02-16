@@ -1,5 +1,9 @@
 import os
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 # Настройки OpenProject API
 OP_API_URL = os.getenv('OP_API_URL')
 OP_API_KEY = os.getenv('OP_API_KEY')
