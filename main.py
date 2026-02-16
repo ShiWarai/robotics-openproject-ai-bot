@@ -1,6 +1,19 @@
+import logging
+
+# Отключить логи HTTP-запросов до импорта telegram (в URL может попадать токен бота)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+
 from typing import Dict, Optional
 
 import requests
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler, ContextTypes, \
     CallbackQueryHandler
@@ -103,7 +116,9 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         return await show_main_menu(update, context)
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Обработчик команды /cancel."""
+    """Обработчик команды /cancel — отмена текущего действия и возврат в главное меню."""
+    if update.message:
+        await update.message.reply_text("Действие отменено. Начинаем сначала.")
     return await show_main_menu(update, context)
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -120,7 +135,7 @@ def main():
         print("Не удалось загрузить пользователей. Бот не запустится.")
         return
 
-    application = Application.builder().token(TELEGRAM_TOKEN).build()
+    application = Application.builder().token(TELEGRAM_TOKEN.strip()).build()
 
     # Сохраняем USER_TELEGRAM_IDS в bot_data
     application.bot_data['USER_TELEGRAM_IDS'] = USER_TELEGRAM_IDS
@@ -155,7 +170,10 @@ def main():
             CalcStates.START_DATE_CALC.value: [CallbackQueryHandler(handle_start_date_calc)],
             CalcStates.END_DATE_CALC.value: [CallbackQueryHandler(handle_end_date_calc)],
         },
-        fallbacks=[CommandHandler('cancel', cancel)],
+        fallbacks=[
+            CommandHandler('cancel', cancel),
+            CommandHandler('start', start),
+        ],
     )
 
     application.add_handler(conv_handler)
