@@ -11,7 +11,8 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - ./cache:/app/cache:ro
+      # Без :ro — в cache пишутся временные файлы голосовых сообщений (.ogg, .wav)
+      - ./cache:/app/cache
     networks:
       - default
       # Сеть проекта /root/rkllama — чтобы ходить в RKLLama по имени (в .env: RKLLAMA_URL=http://rkllama:8080)

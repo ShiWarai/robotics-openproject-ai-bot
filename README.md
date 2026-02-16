@@ -30,9 +30,8 @@ Telegram-бот для работы с OpenProject: создание задач,
 1. Скопируйте конфиг и заполните переменные:  
    `cp .env.example .env` — укажите `OP_API_URL`, `OP_API_KEY`, `TELEGRAM_TOKEN`.
 2. При использовании RKLLama в отдельном проекте: в `.env` задайте `RKLLAMA_URL=http://rkllama:8080` и сначала запустите RKLLama (чтобы создалась сеть), затем бота.
-3. Запуск:  
+3. Запуск (переменные подхватываются из `.env`; другой файл — `ENV_FILE=.env.prod docker compose up`):  
    `docker compose up`  
-   (в фоне: `docker compose up -d`). Логи: `docker compose logs -f bot`.
 
 Остановка: `docker compose down`.
 
