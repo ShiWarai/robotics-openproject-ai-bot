@@ -1,0 +1,22 @@
+name: robotics-openproject-ai-bot
+
+services:
+  bot:
+    build: .
+    image: robotics-openproject-ai-bot:latest
+    container_name: openproject-telegram-bot
+    env_file: ${ENV_FILE:-.env}
+    restart: unless-stopped
+    # Доступ к RKLLama на хосте: host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./cache:/app/cache:ro
+    networks:
+      - default
+      # Сеть проекта /root/rkllama — чтобы ходить в RKLLama по имени (в .env: RKLLAMA_URL=http://rkllama:8080)
+      - rkllama_default
+
+networks:
+  rkllama_default:
+    external: true
