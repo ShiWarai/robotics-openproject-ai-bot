@@ -1,21 +1,35 @@
 name: robotics-openproject-ai-bot
 
 services:
+  xray:
+    image: ghcr.io/xtls/xray-core:latest
+    container_name: openproject-bot-xray
+    restart: unless-stopped
+    command: ["run", "-c", "/etc/xray/config.json"]
+    volumes:
+      - ./xray/config.json:/etc/xray/config.json:ro
+    networks:
+      - default
+
   bot:
     build: .
     image: robotics-openproject-ai-bot:latest
     container_name: openproject-telegram-bot
     env_file: ${ENV_FILE:-.env}
+    environment:
+      HTTP_PROXY: http://xray:10808
+      HTTPS_PROXY: http://xray:10808
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,rkllama,host.docker.internal}
+    depends_on:
+      xray:
+        condition: service_started
     restart: unless-stopped
-    # Доступ к RKLLama на хосте: host.docker.internal:11434
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      # Без :ro — в cache пишутся временные файлы голосовых сообщений (.ogg, .wav)
       - ./cache:/app/cache
     networks:
       - default
-      # Сеть проекта /root/rkllama — чтобы ходить в RKLLama по имени (в .env: RKLLAMA_URL=http://rkllama:8080)
       - rkllama_default
 
 networks:

@@ -175,5 +175,6 @@ cython_debug/
 
 # Other
 cache/
+xray/config.json
 /vosk-model-small-ru-0.22/
 vosk-model-small-ru-0.22.zip
