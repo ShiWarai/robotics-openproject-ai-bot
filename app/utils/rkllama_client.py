@@ -70,6 +70,7 @@ def send_request(
     format_schema: Optional[dict] = None,
     enable_thinking: Optional[bool] = None,
     timeout: Optional[int] = None,
+    temperature: Optional[float] = None,
 ) -> str:
     """Отправка запроса к RKLLama (Ollama-совместимый API). format_schema — строгая JSON Schema. enable_thinking — режим рассуждений (по умолчанию из RKLLAMA_THINKING)."""
     url = url or RKLLAMA_URL
@@ -83,7 +84,7 @@ def send_request(
         })
     chat_url = f"{url.rstrip('/')}/api/chat"
     fmt = "schema" if format_schema is not None else ("json" if format_json else "none")
-    temp = RKLLAMA_TEMPERATURE
+    temp = temperature if temperature is not None else RKLLAMA_TEMPERATURE
     t0 = time.perf_counter()
     logger.info(
         "RKLLama: запрос → %s model=%r timeout=%s thinking=%s format=%s "
@@ -146,6 +147,13 @@ async def call_rkllama(
     *,
     format_schema: Optional[dict] = None,
     enable_thinking: Optional[bool] = None,
+    temperature: Optional[float] = None,
 ) -> str:
     """Асинхронная обёртка для вызова RKLLama. format_schema — строгая JSON Schema. enable_thinking — из RKLLAMA_THINKING или переопределение."""
-    return send_request(system_prompt, user_input, format_schema=format_schema, enable_thinking=enable_thinking)
+    return send_request(
+        system_prompt,
+        user_input,
+        format_schema=format_schema,
+        enable_thinking=enable_thinking,
+        temperature=temperature,
+    )

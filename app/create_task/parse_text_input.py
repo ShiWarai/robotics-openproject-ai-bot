@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from datetime import datetime
 from typing import List, Optional, Tuple
 
@@ -14,14 +15,51 @@ from telegram.ext import ContextTypes
 from app.create_task.create_task import try_finish_free_task_creation
 from app.estimated_time.parse_text_input import (
     CORRECTION_PROMPT,
-    _call_llm,
     _strip_json_response,
 )
+from app.utils.lm_studio_client import call_lm_studio
+from app.utils.rkllama_client import call_rkllama
 from app.states import TaskStates
 from app.utils.speech_recognition import process_voice_message
 from app.utils.utils import show_main_menu, get_project_members
+from app.variables import LLM_PROVIDER
 
 logger = logging.getLogger(__name__)
+CREATE_TASK_RKLLAMA_TEMPERATURE = 0.5
+
+
+async def _call_llm_create_task(
+    system_prompt: str,
+    user_input: str,
+    *,
+    format_schema: Optional[dict] = None,
+) -> str:
+    """LLM вызов для create_task free-text: повышаем креативность только здесь."""
+    t0 = time.perf_counter()
+    logger.info(
+        "create_task free: LLM старт provider=%s format_schema=%s temp=%s chars(system=%d user=%d)",
+        LLM_PROVIDER,
+        format_schema is not None,
+        CREATE_TASK_RKLLAMA_TEMPERATURE if LLM_PROVIDER == "rkllama" else "n/a",
+        len(system_prompt),
+        len(user_input),
+    )
+    if LLM_PROVIDER == "rkllama":
+        out = await call_rkllama(
+            system_prompt,
+            user_input,
+            format_schema=format_schema,
+            temperature=CREATE_TASK_RKLLAMA_TEMPERATURE,
+        )
+    else:
+        out = await call_lm_studio(system_prompt, user_input)
+    elapsed = time.perf_counter() - t0
+    logger.info(
+        "create_task free: LLM конец за %.2f с, ответ_chars=%d",
+        elapsed,
+        len(out) if isinstance(out, str) else 0,
+    )
+    return out
 
 # --- JSON Schema (rkllama / format) ---
 
@@ -238,7 +276,7 @@ async def handle_create_task_free_text(
     prompt = _build_stage1_prompt(project_list, user_input or "")
 
     logger.info("create_task free: этап 1 LLM, сообщение длины %s", len(user_input or ""))
-    raw_response = await _call_llm(prompt, user_input or "", format_schema=FORMAT_TASK_STAGE1)
+    raw_response = await _call_llm_create_task(prompt, user_input or "", format_schema=FORMAT_TASK_STAGE1)
     json_str = _strip_json_response(raw_response)
     correction_used = False
 
@@ -248,7 +286,7 @@ async def handle_create_task_free_text(
         except json.JSONDecodeError:
             if not correction_used:
                 correction_used = True
-                raw_response = await _call_llm(
+                raw_response = await _call_llm_create_task(
                     "Ты исправляешь ответ в валидный JSON. Отвечай только JSON-объектом.",
                     CORRECTION_PROMPT.format(
                         SCHEMA=SCHEMA_STAGE1_JSON,
@@ -293,7 +331,7 @@ async def handle_create_task_free_text(
         if pid is None or subj == "":
             if not correction_used:
                 correction_used = True
-                raw_response = await _call_llm(
+                raw_response = await _call_llm_create_task(
                     "Ты исправляешь ответ в валидный JSON. Отвечай только JSON-объектом.",
                     CORRECTION_PROMPT.format(
                         SCHEMA=SCHEMA_STAGE1_JSON,
@@ -351,7 +389,7 @@ async def handle_create_task_free_text(
     roles_prompt = _build_roles_prompt(project_users, user_input or "", assignee_hint, responsible_hint)
 
     logger.info("create_task free: этап 2 LLM (роли)")
-    roles_raw = await _call_llm(roles_prompt, user_input or "", format_schema=FORMAT_TASK_ROLES)
+    roles_raw = await _call_llm_create_task(roles_prompt, user_input or "", format_schema=FORMAT_TASK_ROLES)
     roles_str = _strip_json_response(roles_raw)
     correction2 = False
     while True:
@@ -360,7 +398,7 @@ async def handle_create_task_free_text(
         except json.JSONDecodeError:
             if not correction2:
                 correction2 = True
-                roles_raw = await _call_llm(
+                roles_raw = await _call_llm_create_task(
                     "Ты исправляешь ответ в валидный JSON. Отвечай только JSON-объектом.",
                     CORRECTION_PROMPT.format(
                         SCHEMA=SCHEMA_ROLES_JSON,
@@ -429,6 +467,7 @@ async def handle_create_task_free_text(
 
     context.user_data["task_free_draft"] = {
         "project_id": str(selected["id"]),
+        "project_name": selected["name"],
         "task_name": subj,
         "task_description": desc,
         "start_date": start_date,

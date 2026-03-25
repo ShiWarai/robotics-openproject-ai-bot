@@ -26,6 +26,7 @@ from app.create_task.create_task import (
     handle_task_input_method_choice,
     handle_task_free_fallback_assignee,
     handle_task_free_fallback_responsible,
+    handle_task_after_create_choice,
     get_project_choice,
     get_task_name,
     get_task_description,
@@ -166,6 +167,9 @@ def main():
             TaskStates.START_DATE.value: [CallbackQueryHandler(get_start_date)],
             TaskStates.DUE_DATE.value: [CallbackQueryHandler(get_due_date)],
             TaskStates.ESTIMATED_TIME.value: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_estimated_time)],
+            TaskStates.TASK_AFTER_CREATE_CHOICE.value: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_task_after_create_choice)
+            ],
             TimeStates.INPUT_METHOD_CHOICE.value: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_input_method_choice)],
             TimeStates.FREE_TEXT_INPUT.value: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_free_text_input),

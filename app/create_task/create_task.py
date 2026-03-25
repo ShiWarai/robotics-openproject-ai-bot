@@ -12,6 +12,21 @@ from app.variables import *
 
 logger = logging.getLogger(__name__)
 
+def _user_name_by_id(users: list, uid: Optional[str]) -> str:
+    if uid is None:
+        return "Никого"
+    suid = str(uid)
+    found = next((u.get("name") for u in users if str(u.get("id")) == suid), None)
+    return found or f"ID {suid}"
+
+async def handle_task_after_create_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """После успешного создания задачи: либо новая задача, либо возврат в меню."""
+    choice = (update.message.text or "").strip()
+    if choice == "Создать еще задачу":
+        context.user_data.clear()
+        return await choose_task_input_method(update, context)
+    return await show_main_menu(update, context)
+
 
 async def choose_task_input_method(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Выбор: пошаговое меню или произвольный ввод."""
@@ -109,10 +124,39 @@ async def try_finish_free_task_creation(update: Update, context: ContextTypes.DE
     context.user_data.pop("task_free_draft", None)
 
     if result:
-        await update.message.reply_text(
-            f"Задача «{draft['task_name']}» создана! ID: {result['id']}",
-            reply_markup=ReplyKeyboardRemove(),
+        keyboard = [["Создать еще задачу"], ["Вернуться в меню"]]
+        assignee_name = _user_name_by_id(users, draft.get("assignee_id"))
+        responsible_name = _user_name_by_id(users, draft.get("responsible_id"))
+        project_name = draft.get("project_name") or f"ID {draft.get('project_id')}"
+        description = (draft.get("task_description") or "").strip()
+        if len(description) > 400:
+            description = description[:397] + "..."
+        start_date = draft.get("start_date") or "не указана"
+        due_date = draft.get("due_date") or "не указана"
+        estimated_time = (
+            f"{draft.get('estimated_time')} ч"
+            if draft.get("estimated_time")
+            else "не указана"
         )
+        await update.message.reply_text(
+            (
+                "Задача создана в OpenProject.\n\n"
+                f"ID: {result['id']}\n"
+                f"Проект: {project_name}\n"
+                f"Название: {draft['task_name']}\n"
+                f"Описание: {description}\n"
+                f"Исполнитель (assignee): {assignee_name}\n"
+                f"Ответственный (responsible): {responsible_name}\n"
+                f"Дата начала: {start_date}\n"
+                f"Дата окончания: {due_date}\n"
+                f"Оценка: {estimated_time}\n\n"
+                "Хотите создать еще одну задачу?"
+            ),
+            reply_markup=ReplyKeyboardMarkup(
+                keyboard, one_time_keyboard=True, resize_keyboard=True
+            ),
+        )
+        return TaskStates.TASK_AFTER_CREATE_CHOICE.value
     else:
         await update.message.reply_text(
             "Ошибка при создании задачи в OpenProject.",
@@ -342,9 +386,14 @@ async def get_estimated_time(update: Update, context: ContextTypes.DEFAULT_TYPE)
     )
 
     if result:
+        keyboard = [["Создать еще задачу"], ["Вернуться в меню"]]
         await update.message.reply_text(
-            f"Задача '{task_name}' создана в проекте {project_id}! ID: {result['id']}"
+            f"Задача '{task_name}' создана в проекте {project_id}! ID: {result['id']}\n\nХотите создать еще одну задачу?",
+            reply_markup=ReplyKeyboardMarkup(
+                keyboard, one_time_keyboard=True, resize_keyboard=True
+            ),
         )
+        return TaskStates.TASK_AFTER_CREATE_CHOICE.value
     else:
         await update.message.reply_text("Ошибка при создании задачи.")
 
