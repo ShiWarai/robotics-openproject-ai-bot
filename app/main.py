@@ -22,10 +22,20 @@ from app.calculate_hours.calculate_hours import (
     get_employee_choice, handle_employee_choice, handle_start_date_calc, handle_end_date_calc
 )
 from app.create_task.create_task import (
-    get_project_choice, get_task_name, get_task_description,
-    get_assignee_choice, get_responsible_choice, get_start_date,
-    get_due_date, get_estimated_time
+    choose_task_input_method,
+    handle_task_input_method_choice,
+    handle_task_free_fallback_assignee,
+    handle_task_free_fallback_responsible,
+    get_project_choice,
+    get_task_name,
+    get_task_description,
+    get_assignee_choice,
+    get_responsible_choice,
+    get_start_date,
+    get_due_date,
+    get_estimated_time,
 )
+from app.create_task.parse_text_input import handle_create_task_free_text
 from app.estimated_time.estimated_time import (
     choose_input_method, handle_input_method_choice, handle_project_choice_time,
     handle_task_choice_time, handle_date_choice_time, handle_person_choice_time,
@@ -33,7 +43,7 @@ from app.estimated_time.estimated_time import (
 )
 from app.estimated_time.parse_text_input import handle_free_text_input, handle_text_input
 from app.states import MainStates, TaskStates, TimeStates, CalcStates
-from app.utils.utils import show_main_menu, get_projects
+from app.utils.utils import show_main_menu
 from app.variables import *
 
 # Глобальный словарь для хранения Telegram ID пользователей
@@ -94,19 +104,7 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Обработчик выбора в главном меню."""
     choice = update.message.text
     if choice == "Создать задачу":
-        projects = get_projects()
-        if not projects or "_embedded" not in projects or not projects["_embedded"]["elements"]:
-            await update.message.reply_text("Не удалось загрузить список проектов.")
-            return ConversationHandler.END
-
-        context.user_data['projects'] = projects["_embedded"]["elements"]
-        project_names = [p["name"] for p in projects["_embedded"]["elements"]]
-        keyboard = [[name] for name in project_names]
-        await update.message.reply_text(
-            "Выберите проект:",
-            reply_markup=ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
-        )
-        return TaskStates.PROJECT_CHOICE.value
+        return await choose_task_input_method(update, context)
     elif choice == "Добавить часы в задачу":
         return await choose_input_method(update, context)
     elif choice == "Рассчитать часы сотрудника":
@@ -147,7 +145,20 @@ def main():
         ],
         states={
             MainStates.MENU.value: [MessageHandler(filters.TEXT & ~filters.COMMAND, menu)],
+            TaskStates.TASK_INPUT_METHOD_CHOICE.value: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_task_input_method_choice)
+            ],
             TaskStates.PROJECT_CHOICE.value: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_project_choice)],
+            TaskStates.TASK_FREE_TEXT_INPUT.value: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_create_task_free_text),
+                MessageHandler(filters.VOICE, handle_create_task_free_text),
+            ],
+            TaskStates.TASK_FREE_FALLBACK_ASSIGNEE.value: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_task_free_fallback_assignee)
+            ],
+            TaskStates.TASK_FREE_FALLBACK_RESPONSIBLE.value: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_task_free_fallback_responsible)
+            ],
             TaskStates.TASK_NAME.value: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_task_name)],
             TaskStates.TASK_DESCRIPTION.value: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_task_description)],
             TaskStates.ASSIGNEE_CHOICE.value: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_assignee_choice)],

@@ -1,3 +1,4 @@
+import logging
 from typing import Dict, Optional
 
 import requests
@@ -6,8 +7,161 @@ from telegram.ext import ContextTypes
 
 from app.states import TaskStates
 from app.utils.custom_calendar import CustomCalendar
-from app.utils.utils import show_main_menu, get_project_members
+from app.utils.utils import show_main_menu, get_project_members, get_projects
 from app.variables import *
+
+logger = logging.getLogger(__name__)
+
+
+async def choose_task_input_method(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Выбор: пошаговое меню или произвольный ввод."""
+    keyboard = [["Через меню"], ["Произвольный ввод"]]
+    await update.message.reply_text(
+        "Как создать задачу?",
+        reply_markup=ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True),
+    )
+    return TaskStates.TASK_INPUT_METHOD_CHOICE.value
+
+
+async def handle_task_input_method_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    choice = (update.message.text or "").strip()
+    if choice == "Через меню":
+        projects = get_projects()
+        if not projects or "_embedded" not in projects or not projects["_embedded"]["elements"]:
+            await update.message.reply_text("Не удалось загрузить список проектов.")
+            return await show_main_menu(update, context)
+
+        context.user_data["projects"] = projects["_embedded"]["elements"]
+        project_names = [p["name"] for p in projects["_embedded"]["elements"]]
+        keyboard = [[name] for name in project_names]
+        await update.message.reply_text(
+            "Выберите проект:",
+            reply_markup=ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True),
+        )
+        return TaskStates.PROJECT_CHOICE.value
+
+    if choice == "Произвольный ввод":
+        projects = get_projects()
+        if not projects or "_embedded" not in projects or not projects["_embedded"]["elements"]:
+            await update.message.reply_text("Не удалось загрузить список проектов.")
+            return await show_main_menu(update, context)
+
+        context.user_data["projects"] = projects["_embedded"]["elements"]
+        await update.message.reply_text(
+            "Опишите задачу текстом или голосовым сообщением: проект, название, описание; "
+            "по желанию — исполнителя, ответственного, даты начала/окончания, оценку в часах.",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        return TaskStates.TASK_FREE_TEXT_INPUT.value
+
+    await update.message.reply_text("Пожалуйста, выберите способ из предложенных.")
+    return TaskStates.TASK_INPUT_METHOD_CHOICE.value
+
+
+async def try_finish_free_task_creation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """
+    Создание задачи по черновику task_free_draft или запрос выбора исполнителя/ответственного.
+    """
+    draft = context.user_data.get("task_free_draft")
+    if not draft:
+        logger.warning("create_task free: нет task_free_draft")
+        return await show_main_menu(update, context)
+
+    users = draft.get("project_users") or []
+
+    if draft.get("need_assignee_pick"):
+        names = [u["name"] for u in users] + ["Никого"]
+        keyboard = [[n] for n in names]
+        logger.info("create_task free: запрос выбора исполнителя (ручной)")
+        await update.message.reply_text(
+            "Не удалось однозначно назначить исполнителя. Выберите из списка участников проекта:",
+            reply_markup=ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True),
+        )
+        return TaskStates.TASK_FREE_FALLBACK_ASSIGNEE.value
+
+    if draft.get("need_responsible_pick"):
+        names = [u["name"] for u in users] + ["Никого"]
+        keyboard = [[n] for n in names]
+        logger.info("create_task free: запрос выбора ответственного (ручной)")
+        await update.message.reply_text(
+            "Не удалось однозначно назначить ответственного. Выберите из списка:",
+            reply_markup=ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True),
+        )
+        return TaskStates.TASK_FREE_FALLBACK_RESPONSIBLE.value
+
+    logger.info(
+        "create_task free: создание задачи project=%s assignee=%s responsible=%s",
+        draft.get("project_id"),
+        draft.get("assignee_id"),
+        draft.get("responsible_id"),
+    )
+    result = create_openproject_task(
+        draft["project_id"],
+        draft["task_name"],
+        draft["task_description"],
+        draft.get("assignee_id"),
+        draft.get("responsible_id"),
+        draft.get("start_date"),
+        draft.get("due_date"),
+        draft.get("estimated_time"),
+    )
+
+    context.user_data.pop("task_free_draft", None)
+
+    if result:
+        await update.message.reply_text(
+            f"Задача «{draft['task_name']}» создана! ID: {result['id']}",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+    else:
+        await update.message.reply_text(
+            "Ошибка при создании задачи в OpenProject.",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+
+    return await show_main_menu(update, context)
+
+
+async def handle_task_free_fallback_assignee(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    draft = context.user_data.get("task_free_draft")
+    if not draft:
+        return await show_main_menu(update, context)
+
+    choice = (update.message.text or "").strip()
+    users = draft["project_users"]
+
+    if choice == "Никого":
+        draft["assignee_id"] = None
+    else:
+        selected = next((u for u in users if u["name"] == choice), None)
+        if not selected:
+            await update.message.reply_text("Выберите имя из предложенного списка.")
+            return TaskStates.TASK_FREE_FALLBACK_ASSIGNEE.value
+        draft["assignee_id"] = selected["id"]
+
+    draft["need_assignee_pick"] = False
+    return await try_finish_free_task_creation(update, context)
+
+
+async def handle_task_free_fallback_responsible(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    draft = context.user_data.get("task_free_draft")
+    if not draft:
+        return await show_main_menu(update, context)
+
+    choice = (update.message.text or "").strip()
+    users = draft["project_users"]
+
+    if choice == "Никого":
+        draft["responsible_id"] = None
+    else:
+        selected = next((u for u in users if u["name"] == choice), None)
+        if not selected:
+            await update.message.reply_text("Выберите имя из предложенного списка.")
+            return TaskStates.TASK_FREE_FALLBACK_RESPONSIBLE.value
+        draft["responsible_id"] = selected["id"]
+
+    draft["need_responsible_pick"] = False
+    return await try_finish_free_task_creation(update, context)
 
 
 async def get_project_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:

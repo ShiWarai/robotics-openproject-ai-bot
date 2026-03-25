@@ -1,7 +1,11 @@
 import json
+import logging
+import time
 from typing import Optional, Tuple, List
 
 import requests
+
+logger = logging.getLogger(__name__)
 
 from app.variables import (
     RKLLAMA_URL,
@@ -73,10 +77,27 @@ def send_request(
     timeout = timeout if timeout is not None else RKLLAMA_TIMEOUT
     thinking = enable_thinking if enable_thinking is not None else RKLLAMA_THINKING
     if not url or not model:
+        logger.warning("RKLLama: пропуск запроса — не заданы RKLLAMA_URL или RKLLAMA_MODEL")
         return json.dumps({
             "error": "Не заданы RKLLAMA_URL или RKLLAMA_MODEL. Укажите их в .env."
         })
     chat_url = f"{url.rstrip('/')}/api/chat"
+    fmt = "schema" if format_schema is not None else ("json" if format_json else "none")
+    temp = RKLLAMA_TEMPERATURE
+    t0 = time.perf_counter()
+    logger.info(
+        "RKLLama: запрос → %s model=%r timeout=%s thinking=%s format=%s "
+        "chars(system=%d user=%d) num_predict=%s temperature=%s",
+        chat_url,
+        model,
+        timeout,
+        thinking,
+        fmt,
+        len(system_prompt),
+        len(user_input),
+        RKLLAMA_MAX_NEW_TOKENS,
+        temp,
+    )
     headers = {"Content-Type": "application/json"}
 
     messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_input}]
@@ -91,7 +112,6 @@ def send_request(
     elif format_json:
         payload["format"] = "json"
     options = {"num_predict": RKLLAMA_MAX_NEW_TOKENS}
-    temp = RKLLAMA_TEMPERATURE
     if temp is not None:
         options["temperature"] = temp
     payload["options"] = options
@@ -101,8 +121,22 @@ def send_request(
         response.raise_for_status()
         data = response.json()
         content = data.get("message", {}).get("content", "")
-        return content if isinstance(content, str) else json.dumps(content)
+        result = content if isinstance(content, str) else json.dumps(content)
+        elapsed = time.perf_counter() - t0
+        logger.info(
+            "RKLLama: ответ за %.2f с, символов в теле ответа=%d",
+            elapsed,
+            len(result),
+        )
+        return result
     except requests.exceptions.RequestException as e:
+        elapsed = time.perf_counter() - t0
+        logger.warning(
+            "RKLLama: сбой запроса за %.2f с: %s",
+            elapsed,
+            e,
+            exc_info=logger.isEnabledFor(logging.DEBUG),
+        )
         return json.dumps({"error": f"Ошибка связи с RKLLama: {str(e)}"})
 
 

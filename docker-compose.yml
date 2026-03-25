@@ -19,19 +19,22 @@ services:
     environment:
       HTTP_PROXY: http://xray:10808
       HTTPS_PROXY: http://xray:10808
-      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,rkllama,host.docker.internal}
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,rkllama,host.docker.internal,whisper-rknn-api}
+      # Отдельный стек Whisper: имя сервиса в сети whisper_rknn_default. Переопределите в .env при другом хосте/порте.
+      WHISPER_RKNN_URL: ${WHISPER_RKNN_URL:-http://whisper-rknn-api:8080}
     depends_on:
       xray:
         condition: service_started
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    volumes:
-      - ./cache:/app/cache
     networks:
       - default
       - rkllama_default
+      - whisper_rknn_default
 
 networks:
   rkllama_default:
+    external: true
+  whisper_rknn_default:
     external: true

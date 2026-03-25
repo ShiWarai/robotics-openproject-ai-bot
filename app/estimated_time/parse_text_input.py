@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+import time
 from datetime import datetime
 from typing import Optional
 
@@ -25,9 +26,27 @@ async def _call_llm(
     format_schema: Optional[dict] = None,
 ) -> str:
     """Вызов выбранного провайдера LLM. format_schema передаётся только в rkllama."""
+    t0 = time.perf_counter()
+    logger.info(
+        "LLM: старт провайдер=%s format_schema=%s chars(system=%d user=%d)",
+        LLM_PROVIDER,
+        format_schema is not None,
+        len(system_prompt),
+        len(user_input),
+    )
     if LLM_PROVIDER == "rkllama":
-        return await call_rkllama(system_prompt, user_input, format_schema=format_schema)
-    return await call_lm_studio(system_prompt, user_input)
+        out = await call_rkllama(system_prompt, user_input, format_schema=format_schema)
+    else:
+        out = await call_lm_studio(system_prompt, user_input)
+    elapsed = time.perf_counter() - t0
+    err_like = isinstance(out, str) and out.lstrip().startswith("{") and '"error"' in out
+    logger.info(
+        "LLM: конец за %.2f с, ответ_chars=%d%s",
+        elapsed,
+        len(out) if isinstance(out, str) else 0,
+        " (похоже на JSON-ошибку)" if err_like else "",
+    )
+    return out
 
 
 def _strip_json_response(text: str) -> str:
@@ -114,7 +133,7 @@ PROJECT_PROMPT_TEMPLATE = """
 Текст для анализа: "{TEXT}"
 """
 
-SYSTEM_PROMPT_TEMPLATE = """
+TASKS_PROMPT_TEMPLATE = """
 Вы — помощник, который извлекает информацию о рабочем времени для учёта задач. Проект уже выбран: "{PROJECT_NAME}". Вернуть в JSON массив записей (поле entries) или код ошибки (поле error_code).
 
 **Поля каждой записи в entries**:
@@ -159,14 +178,7 @@ async def handle_free_text_input(update: Update, context: ContextTypes.DEFAULT_T
             input_type = "голосового"
             await update.message.reply_text(f"Распознанный текст: {user_input}")
         except Exception as e:
-            msg = str(e)
-            if "ffmpeg" in msg.lower():
-                msg = (
-                    "Для голосовых сообщений нужен ffmpeg. "
-                    "Установите: sudo apt install ffmpeg (Linux) или скачайте с https://ffmpeg.org (Windows)."
-                )
-            else:
-                msg = f"Ошибка распознавания голосового сообщения: {msg}"
+            msg = f"Ошибка распознавания голосового сообщения: {e}"
             await update.message.reply_text(msg)
             return TimeStates.FREE_TEXT_INPUT.value
     else:
@@ -336,7 +348,7 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE, 
 
     # Формирование промта для извлечения часов
     try:
-        prompt = SYSTEM_PROMPT_TEMPLATE.format(
+        prompt = TASKS_PROMPT_TEMPLATE.format(
             PROJECT_NAME=project_name,
             TASKS=json.dumps(task_list, ensure_ascii=False),
             # USERS=json.dumps(user_names, ensure_ascii=False),
