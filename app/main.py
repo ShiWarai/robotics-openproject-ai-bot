@@ -7,6 +7,7 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 from typing import Dict, Optional
 
 import requests
+from telegram.error import NetworkError, TimedOut
 
 logging.basicConfig(
     level=logging.INFO,
@@ -17,6 +18,7 @@ logging.basicConfig(
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler, ContextTypes, \
     CallbackQueryHandler
+from telegram.request import HTTPXRequest
 
 from app.calculate_hours.calculate_hours import (
     get_employee_choice, handle_employee_choice, handle_start_date_calc, handle_end_date_calc
@@ -120,11 +122,20 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         await update.message.reply_text("Действие отменено. Начинаем сначала.")
     return await show_main_menu(update, context)
 
+logger = logging.getLogger(__name__)
+
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обработчик ошибок."""
-    print(f"Произошла ошибка: {context.error}")
+    # Сетевые сбои (прокси, таймауты) — логируем и молча продолжаем, не пытаемся отвечать
+    if isinstance(context.error, (NetworkError, TimedOut)):
+        logger.warning("Временная ошибка сети (бот продолжит работу): %s", context.error)
+        return
+    logger.error("Необработанная ошибка: %s", context.error)
     if update and update.message:
-        await update.message.reply_text("Произошла ошибка. Попробуйте снова или обратитесь к администратору.")
+        try:
+            await update.message.reply_text("Произошла ошибка. Попробуйте снова или обратитесь к администратору.")
+        except Exception:
+            pass
 
 def main():
     """Запускает бота."""
@@ -134,7 +145,25 @@ def main():
         print("Не удалось загрузить пользователей. Бот не запустится.")
         return
 
-    application = Application.builder().token(TELEGRAM_TOKEN.strip()).build()
+    # Отдельный пул для long-polling getUpdates: read_timeout > polling timeout (30 с)
+    get_updates_request = HTTPXRequest(
+        connection_pool_size=4,
+        pool_timeout=60.0,
+        connect_timeout=30.0,
+        read_timeout=45.0,
+        write_timeout=30.0,
+    )
+    application = (
+        Application.builder()
+        .token(TELEGRAM_TOKEN.strip())
+        .get_updates_request(get_updates_request)
+        .connection_pool_size(16)
+        .pool_timeout(60.0)
+        .connect_timeout(30.0)
+        .read_timeout(30.0)
+        .write_timeout(30.0)
+        .build()
+    )
 
     # Сохраняем USER_TELEGRAM_IDS в bot_data
     application.bot_data['USER_TELEGRAM_IDS'] = USER_TELEGRAM_IDS
@@ -193,7 +222,8 @@ def main():
 
     application.add_handler(conv_handler)
     application.add_error_handler(error_handler)
-    application.run_polling()
+    # timeout=30: Telegram держит long-poll соединение 30 с; read_timeout у get_updates_request должен быть больше
+    application.run_polling(timeout=30, drop_pending_updates=True, allowed_updates=Update.ALL_TYPES)
 
 if __name__ == '__main__':
     main()

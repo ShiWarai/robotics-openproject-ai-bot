@@ -21,11 +21,19 @@ services:
       HTTPS_PROXY: http://xray:10808
       NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,rkllama,host.docker.internal,whisper-rknn-api}
       # Отдельный стек Whisper: имя сервиса в сети whisper_rknn_default. Переопределите в .env при другом хосте/порте.
-      WHISPER_RKNN_URL: ${WHISPER_RKNN_URL:-http://whisper-rknn-api:8080}
+      WHISPER_RKNN_URL: ${WHISPER_RKNN_URL:-http://whisper-rknn-api:9003}
     depends_on:
       xray:
         condition: service_started
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    volumes:
+      - ./cache:/app/cache
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:

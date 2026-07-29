@@ -10,8 +10,9 @@ from telegram.ext import ContextTypes
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _CACHE_DIR = os.path.join(_PROJECT_ROOT, "cache")
 
-# HTTP API из /root/whisper_rknn (api_server.py): POST /transcribe (multipart)
+# OpenAI-совместимый HTTP API whisper-rknn (POST /v1/audio/transcriptions)
 WHISPER_RKNN_URL = os.environ.get("WHISPER_RKNN_URL", "").strip().rstrip("/")
+WHISPER_API_KEY = os.environ.get("WHISPER_API_KEY", "").strip()
 
 
 def _require_whisper_url() -> None:
@@ -21,16 +22,23 @@ def _require_whisper_url() -> None:
         )
 
 
+def _whisper_headers() -> dict[str, str]:
+    if WHISPER_API_KEY:
+        return {"Authorization": f"Bearer {WHISPER_API_KEY}"}
+    return {}
+
+
 async def _transcribe_whisper_rknn(ogg_path: str) -> str:
-    """POST OGG на /transcribe (декодирование и ресэмплинг на стороне API)."""
-    url = f"{WHISPER_RKNN_URL}/transcribe"
+    """POST OGG на /v1/audio/transcriptions (декодирование и ресэмплинг на стороне API)."""
+    url = f"{WHISPER_RKNN_URL}/v1/audio/transcriptions"
     timeout = aiohttp.ClientTimeout(total=300)
     async with aiofiles.open(ogg_path, "rb") as af:
         body = await af.read()
     data = aiohttp.FormData()
     data.add_field("file", body, filename="voice.ogg", content_type="audio/ogg")
+    data.add_field("model", "whisper-1")
     async with aiohttp.ClientSession(timeout=timeout) as session:
-        async with session.post(url, data=data) as resp:
+        async with session.post(url, data=data, headers=_whisper_headers()) as resp:
             raw = await resp.text()
             if resp.status != 200:
                 raise RuntimeError(

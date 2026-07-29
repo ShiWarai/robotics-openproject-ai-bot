@@ -8,7 +8,7 @@ Telegram-бот для работы с OpenProject: создание задач,
 | --------------- | -------------------------------------------------------------------------- |
 | Бот             | python-telegram-bot                                                        |
 | API             | OpenProject REST API v3, requests                                          |
-| Распознавание   | Vosk (голос), RKLLama / LM Studio (разбор произвольного текста)            |
+| Распознавание   | Whisper RKNN (голос), RKLLama / LM Studio (разбор произвольного текста)    |
 | Конфигурация    | python-dotenv, .env                                                        |
 | Инфраструктура  | Docker, Docker Compose                                                     |
 
@@ -17,7 +17,7 @@ Telegram-бот для работы с OpenProject: создание задач,
 | Раздел                       | Содержание                                  |
 | ---------------------------- | -------------------------------------------- |
 | [Быстрый старт](#быстрый-старт) | Запуск за 3 шага                             |
-| [Установка и запуск](#установка-и-запуск) | Docker, локально, RKLLama, Vosk             |
+| [Установка и запуск](#установка-и-запуск) | Docker, локально, RKLLama, Whisper          |
 | [Возможности](#возможности)  | Создание задач, учёт часов, расчёт, доступ   |
 | [Структура проекта](#структура-проекта) | Дерево каталогов                             |
 | [Команды бота](#команды-бота) | /start, /cancel                              |
@@ -30,7 +30,8 @@ Telegram-бот для работы с OpenProject: создание задач,
 1. Скопируйте конфиг и заполните переменные:  
    `cp .env.example .env` — укажите `OP_API_URL`, `OP_API_KEY`, `TELEGRAM_TOKEN`.
 2. При использовании RKLLama в отдельном проекте: в `.env` задайте `RKLLAMA_URL=http://rkllama:8080` и сначала запустите RKLLama (чтобы создалась сеть), затем бота.
-3. Запуск (переменные подхватываются из `.env`; другой файл — `ENV_FILE=.env.prod docker compose up`):  
+3. Для голоса: поднимите [`whisper-rknn`](https://github.com/ShiWarai/whisper-rknn) (`WHISPER_RKNN_URL=http://whisper-rknn-api:9003`, сеть `whisper_rknn_default`).
+4. Запуск (переменные подхватываются из `.env`; другой файл — `ENV_FILE=.env.prod docker compose up`):  
    `docker compose up`  
 
 Остановка: `docker compose down`.
@@ -59,13 +60,19 @@ python -m app.main
 
 ### RKLLama / Ollama (для произвольного ввода текста)
 
-- **Отдельный проект** (например `/root/rkllama`): бот подключается к сети `rkllama_default`. В `.env` укажите `RKLLAMA_URL=http://rkllama:8080` (в контейнере rkllama слушает порт 8080). Сначала запустите RKLLama (`cd /root/rkllama && docker compose up -d`), затем бота.
+- **Отдельный проект RKLLama**: бот подключается к сети `rkllama_default`. В `.env` укажите `RKLLAMA_URL=http://rkllama:8080` (в контейнере rkllama слушает порт 8080). Сначала запустите RKLLama (`docker compose up -d` в каталоге этого проекта), затем бота.
 - **На хосте**: в `.env` укажите `RKLLAMA_URL=http://host.docker.internal:11434`.
 
-### Голосовой ввод (Vosk)
+### Голосовой ввод (Whisper RKNN)
 
-Для распознавания голоса нужна модель **vosk-model-small-ru-0.22**:  
-https://alphacephei.com/vosk/models — скачать и распаковать в папку `cache/` в корне проекта. При запуске в Docker том `./cache` монтируется в контейнер.
+Бот отправляет голосовые сообщения в OpenAI-совместимый API [whisper-rknn](https://github.com/ShiWarai/whisper-rknn) (`POST /v1/audio/transcriptions`):
+
+1. Сеть: `docker network create whisper_rknn_default` (один раз).
+2. Клонируйте и запустите whisper-rknn: `docker compose up -d` (в `.env` сервиса задайте **`WHISPER_LANGUAGE=ru`** или другой код под ваше аудио).
+3. В `.env` бота: `WHISPER_RKNN_URL=http://whisper-rknn-api:9003`.
+4. Если в whisper-rknn включён `WHISPER_API_KEY` — продублируйте его в `.env` бота как `WHISPER_API_KEY`.
+
+Контейнер бота уже подключён к внешней сети `whisper_rknn_default`.
 
 ---
 
